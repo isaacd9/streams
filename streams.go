@@ -136,37 +136,13 @@ func (a *Aggregation[K, In, Out]) ReadMessage(ctx context.Context, key K) (Out, 
 	}
 }
 
-type Aggregation[K comparable, In any, Out any] struct {
-	g   *GroupBy[In, K]
-	acc Out
-	agg func(K, In, Out) Out
-
-	// TODO: Replace this with an interface!
-	state map[K]Out
-}
-
-func NewAggregation[K comparable, In any, Out any](g *GroupBy[In, K], init Out, agg func(K, In, Out) Out) Table[K, Out] {
-	return &Aggregation[K, In, Out]{
-		g:     g,
-		acc:   init,
-		agg:   agg,
-		state: make(map[K]Out),
-	}
-}
-
-func (a *Aggregation[K, In, Out]) ReadMessage(ctx context.Context, key K) (Out, error) {
-	for {
-		msg, err := a.g.inner.ReadMessage(ctx)
-		if err != nil {
-			var o Out
-			return o, err
-		}
-
-		msgKey := a.g.fn(msg)
-		a.state[msgKey] = a.agg(msgKey, msg, a.acc)
-
-		if msgKey == key {
-			return a.state[msgKey], nil
-		}
+func NewCount[K comparable, In any, Out any](g *GroupBy[In, K]) Table[K, uint64] {
+	return &Aggregation[K, In, uint64]{
+		g:   g,
+		acc: 0,
+		agg: func(k K, i In, u uint64) uint64 {
+			return u + 1
+		},
+		state: make(map[K]uint64),
 	}
 }
