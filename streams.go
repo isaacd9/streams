@@ -38,7 +38,7 @@ type MappedReeader[In any, Out any] struct {
 	fn    func(In) Out
 }
 
-func NewMappedStream[In any, Out any](r Reader[In], fn func(In) Out) Reader[Out] {
+func NewMappedReader[In any, Out any](r Reader[In], fn func(In) Out) Reader[Out] {
 	return &MappedReeader[In, Out]{
 		inner: r,
 		fn:    fn,
@@ -79,7 +79,6 @@ func (m *FlatMapReader[In, Out]) ReadMessage(ctx context.Context) (Out, error) {
 
 		m.batch = m.fn(msg)
 	}
-
 	r := m.batch[0]
 	m.batch = m.batch[1:]
 	return r, nil
@@ -130,12 +129,14 @@ func (a *Aggregation[K, In, Out]) ReadMessage(ctx context.Context) (K, Out, erro
 	}
 
 	msgKey := a.g.fn(msg)
-	a.state[msgKey] = a.agg(msgKey, msg, a.acc)
-
+	if _, ok := a.state[msgKey]; !ok {
+		a.state[msgKey] = a.acc
+	}
+	a.state[msgKey] = a.agg(msgKey, msg, a.state[msgKey])
 	return msgKey, a.state[msgKey], nil
 }
 
-func NewCount[K comparable, In any, Out any](g *GroupBy[In, K]) KeyedReader[K, uint64] {
+func NewCount[K comparable, In any](g *GroupBy[In, K]) KeyedReader[K, uint64] {
 	return &Aggregation[K, In, uint64]{
 		g:   g,
 		acc: 0,
