@@ -97,8 +97,8 @@ func NewGroupBy[In any, Key comparable](r Reader[In], fn func(In) Key) *GroupBy[
 	}
 }
 
-type Table[K any, T any] interface {
-	ReadMessage(ctx context.Context, key K) (T, error)
+type KeyedReader[K any, T any] interface {
+	ReadMessage(ctx context.Context) (K, T, error)
 }
 
 type Aggregation[K comparable, In any, Out any] struct {
@@ -110,7 +110,7 @@ type Aggregation[K comparable, In any, Out any] struct {
 	state map[K]Out
 }
 
-func NewAggregation[K comparable, In any, Out any](g *GroupBy[In, K], init Out, agg func(K, In, Out) Out) Table[K, Out] {
+func NewAggregation[K comparable, In any, Out any](g *GroupBy[In, K], init Out, agg func(K, In, Out) Out) KeyedReader[K, Out] {
 	return &Aggregation[K, In, Out]{
 		g:     g,
 		acc:   init,
@@ -119,24 +119,23 @@ func NewAggregation[K comparable, In any, Out any](g *GroupBy[In, K], init Out, 
 	}
 }
 
-func (a *Aggregation[K, In, Out]) ReadMessage(ctx context.Context, key K) (Out, error) {
-	for {
-		msg, err := a.g.inner.ReadMessage(ctx)
-		if err != nil {
-			var o Out
-			return o, err
-		}
-
-		msgKey := a.g.fn(msg)
-		a.state[msgKey] = a.agg(msgKey, msg, a.acc)
-
-		if msgKey == key {
-			return a.state[msgKey], nil
-		}
+func (a *Aggregation[K, In, Out]) ReadMessage(ctx context.Context) (K, Out, error) {
+	msg, err := a.g.inner.ReadMessage(ctx)
+	if err != nil {
+		var (
+			o Out
+			k K
+		)
+		return k, o, err
 	}
+
+	msgKey := a.g.fn(msg)
+	a.state[msgKey] = a.agg(msgKey, msg, a.acc)
+
+	return msgKey, a.state[msgKey], nil
 }
 
-func NewCount[K comparable, In any, Out any](g *GroupBy[In, K]) Table[K, uint64] {
+func NewCount[K comparable, In any, Out any](g *GroupBy[In, K]) KeyedReader[K, uint64] {
 	return &Aggregation[K, In, uint64]{
 		g:   g,
 		acc: 0,
