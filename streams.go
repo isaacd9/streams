@@ -85,6 +85,10 @@ func (m *FlatMapReader[In, Out]) ReadMessage(ctx context.Context) (Out, error) {
 	return r, nil
 }
 
+type KeyedReader[K comparable, T any] interface {
+	ReadMessage(ctx context.Context) (K, T, error)
+}
+
 type GroupBy[In any, Key comparable] struct {
 	inner Reader[In]
 	fn    func(In) Key
@@ -97,8 +101,17 @@ func NewGroupBy[In any, Key comparable](r Reader[In], fn func(In) Key) *GroupBy[
 	}
 }
 
-type KeyedReader[K any, T any] interface {
-	ReadMessage(ctx context.Context) (K, T, error)
+func (g *GroupBy[In, Key]) ReadMessage(ctx context.Context) (Key, In, error) {
+	msg, err := g.inner.ReadMessage(ctx)
+	if err != nil {
+		var (
+			i In
+			k Key
+		)
+		return k, i, err
+	}
+
+	return g.fn(msg), msg, nil
 }
 
 type Aggregation[K comparable, In any, Out any] struct {
@@ -120,21 +133,20 @@ func NewAggregation[K comparable, In any, Out any](g *GroupBy[In, K], init Out, 
 }
 
 func (a *Aggregation[K, In, Out]) ReadMessage(ctx context.Context) (K, Out, error) {
-	msg, err := a.g.inner.ReadMessage(ctx)
+	key, msg, err := a.g.ReadMessage(ctx)
 	if err != nil {
 		var (
-			o Out
 			k K
+			o Out
 		)
 		return k, o, err
 	}
 
-	msgKey := a.g.fn(msg)
-	if _, ok := a.state[msgKey]; !ok {
-		a.state[msgKey] = a.init
+	if _, ok := a.state[key]; !ok {
+		a.state[key] = a.init
 	}
-	a.state[msgKey] = a.agg(msgKey, msg, a.state[msgKey])
-	return msgKey, a.state[msgKey], nil
+	a.state[key] = a.agg(key, msg, a.state[key])
+	return key, a.state[key], nil
 }
 
 func NewReducer[K comparable, V any](g *GroupBy[V, K], init V, reducer func(a, b V) V) KeyedReader[K, V] {
@@ -172,13 +184,34 @@ type WindowKey[K comparable] struct {
 }
 
 type TimeWindow[K comparable, V any] struct {
-	g       *GroupBy[V, K]
+	inner   KeyedReader[K, V]
 	windows TimeWindowCfg
 }
 
-func NewTimeWindow[K comparable, V any](g *GroupBy[V, K], windows TimeWindowCfg) *TimeWindow[K, V] {
+func (w *TimeWindow[K, V]) ReadMessage(ctx context.Context) (WindowKey[K], V, error) {
+	msgKey, msg, err := w.inner.ReadMessage(ctx)
+	if err != nil {
+		var (
+			v V
+		)
+		return WindowKey[K]{}, v, err
+	}
+
+	windowStart := time.Now().Round(w.windows.Size)
+	windowEnd := windowStart.Add(w.windows.Advance)
+
+	key := WindowKey[K]{
+		Start: windowStart,
+		End:   windowEnd,
+		K:     msgKey,
+	}
+
+	return key, msg, nil
+}
+
+func NewTimeWindow[K comparable, V any](inner KeyedReader[K, V], windows TimeWindowCfg) *TimeWindow[K, V] {
 	return &TimeWindow[K, V]{
-		g:       g,
+		inner:   inner,
 		windows: windows,
 	}
 }
@@ -202,28 +235,16 @@ func NewWindowedAggregation[K comparable, In any, Out any](w *TimeWindow[K, In],
 }
 
 func (a *WindowedAggregation[K, In, Out]) ReadMessage(ctx context.Context) (WindowKey[K], Out, error) {
-	msg, err := a.w.g.inner.ReadMessage(ctx)
+	key, msg, err := a.w.ReadMessage(ctx)
 	if err != nil {
-		var (
-			o Out
-		)
+		var o Out
 		return WindowKey[K]{}, o, err
-	}
-
-	windowStart := time.Now().Round(a.w.windows.Size)
-	windowEnd := windowStart.Add(a.w.windows.Advance)
-	msgKey := a.w.g.fn(msg)
-
-	key := WindowKey[K]{
-		Start: windowStart,
-		End:   windowEnd,
-		K:     msgKey,
 	}
 
 	if _, ok := a.state[key]; !ok {
 		a.state[key] = a.init
 	}
-	a.state[key] = a.agg(msgKey, msg, a.state[key])
+	a.state[key] = a.agg(key.K, msg, a.state[key])
 	return key, a.state[key], nil
 }
 
