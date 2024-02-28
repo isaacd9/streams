@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"testing"
+	"time"
 )
 
 type TestReader[T any] struct {
@@ -38,6 +39,36 @@ func TestWordCount(t *testing.T) {
 		return s
 	})
 	c := NewCount[string](gb)
+
+	for {
+		k, m, err := c.ReadMessage(context.Background())
+		if err != nil {
+			return
+		}
+		log.Printf("%q=%d", k, m)
+	}
+}
+
+func TestWindowedWordCount(t *testing.T) {
+	r := &TestReader[string]{st: []string{
+		"the quick BROWN",
+		"fox JUMPS over",
+		"the lazy lazy dog",
+	}}
+	rr := NewMappedReader[string, string](r, func(s string) string {
+		return strings.ToLower(s)
+	})
+	fm := NewFlatMapReader[string, string](rr, func(s string) []string {
+		return strings.Split(s, " ")
+	})
+	gb := NewGroupBy[string, string](fm, func(s string) string {
+		return s
+	})
+	w := NewTimeWindow[string, string](gb, TimeWindowCfg{
+		Size:    10 * time.Millisecond,
+		Advance: 10 * time.Millisecond,
+	})
+	c := NewWindowedCount[string, string](w)
 
 	for {
 		k, m, err := c.ReadMessage(context.Background())

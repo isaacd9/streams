@@ -237,3 +237,15 @@ func NewWindowedCount[K comparable, In any](w *TimeWindow[K, In]) KeyedReader[Wi
 		state: make(map[WindowKey[K]]uint64),
 	}
 }
+
+func NewWindowedReducer[K comparable, V any](w *TimeWindow[K, V], reducer func(a, b V) V) KeyedReader[WindowKey[K], V] {
+	var v V
+	return &WindowedAggregation[K, V, V]{
+		w:    w,
+		init: v,
+		agg: func(k K, v1, v2 V) V {
+			return reducer(v1, v2)
+		},
+		state: make(map[WindowKey[K]]V),
+	}
+}
