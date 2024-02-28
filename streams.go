@@ -101,9 +101,9 @@ type KeyedReader[K any, T any] interface {
 }
 
 type Aggregation[K comparable, In any, Out any] struct {
-	g   *GroupBy[In, K]
-	acc Out
-	agg func(K, In, Out) Out
+	g    *GroupBy[In, K]
+	init Out
+	agg  func(K, In, Out) Out
 
 	// TODO: Replace this with an interface!
 	state map[K]Out
@@ -112,7 +112,7 @@ type Aggregation[K comparable, In any, Out any] struct {
 func NewAggregation[K comparable, In any, Out any](g *GroupBy[In, K], init Out, agg func(K, In, Out) Out) KeyedReader[K, Out] {
 	return &Aggregation[K, In, Out]{
 		g:     g,
-		acc:   init,
+		init:  init,
 		agg:   agg,
 		state: make(map[K]Out),
 	}
@@ -130,16 +130,53 @@ func (a *Aggregation[K, In, Out]) ReadMessage(ctx context.Context) (K, Out, erro
 
 	msgKey := a.g.fn(msg)
 	if _, ok := a.state[msgKey]; !ok {
-		a.state[msgKey] = a.acc
+		a.state[msgKey] = a.init
 	}
 	a.state[msgKey] = a.agg(msgKey, msg, a.state[msgKey])
 	return msgKey, a.state[msgKey], nil
 }
 
+type Reducer[K comparable, V any] struct {
+	g    *GroupBy[V, K]
+	init V
+	agg  func(V, V) V
+
+	// TODO: Replace this with an interface!
+	state map[K]V
+}
+
+func NewReducer[K comparable, V any](g *GroupBy[V, K], init V, reducer func(a, b V) V) KeyedReader[K, V] {
+	var v V
+	return &Reducer[K, V]{
+		g:     g,
+		init:  v,
+		agg:   reducer,
+		state: make(map[K]V),
+	}
+}
+
+func (r *Reducer[K, V]) ReadMessage(ctx context.Context) (K, V, error) {
+	msg, err := r.g.inner.ReadMessage(ctx)
+	if err != nil {
+		var (
+			k K
+			v V
+		)
+		return k, v, err
+	}
+
+	msgKey := r.g.fn(msg)
+	if _, ok := r.state[msgKey]; !ok {
+		r.state[msgKey] = r.init
+	}
+	r.state[msgKey] = r.agg(msg, r.state[msgKey])
+	return msgKey, r.state[msgKey], nil
+}
+
 func NewCount[K comparable, In any](g *GroupBy[In, K]) KeyedReader[K, uint64] {
 	return &Aggregation[K, In, uint64]{
-		g:   g,
-		acc: 0,
+		g:    g,
+		init: 0,
 		agg: func(k K, i In, u uint64) uint64 {
 			return u + 1
 		},
