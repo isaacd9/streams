@@ -2,6 +2,7 @@ package streams
 
 import (
 	"context"
+	"time"
 )
 
 type Reader[T any] interface {
@@ -181,5 +182,83 @@ func NewCount[K comparable, In any](g *GroupBy[In, K]) KeyedReader[K, uint64] {
 			return u + 1
 		},
 		state: make(map[K]uint64),
+	}
+}
+
+type TimeWindowCfg struct {
+	Size    time.Duration
+	Advance time.Duration
+}
+
+type WindowKey[K comparable] struct {
+	Start time.Time
+	End   time.Time
+	K     K
+}
+
+type TimeWindow[K comparable, V any] struct {
+	g       *GroupBy[V, K]
+	windows TimeWindowCfg
+}
+
+func NewTimeWindow[K comparable, V any](g *GroupBy[V, K], windows TimeWindowCfg) *TimeWindow[K, V] {
+	return &TimeWindow[K, V]{
+		g:       g,
+		windows: windows,
+	}
+}
+
+type WindowedAggregation[K comparable, In any, Out any] struct {
+	w    *TimeWindow[K, In]
+	init Out
+	agg  func(K, In, Out) Out
+
+	// TODO: Replace this with an interface!
+	state map[WindowKey[K]]Out
+}
+
+func NewWindowedAggregation[K comparable, In any, Out any](w *TimeWindow[K, In], init Out, agg func(K, In, Out) Out) KeyedReader[WindowKey[K], Out] {
+	return &WindowedAggregation[K, In, Out]{
+		w:     w,
+		init:  init,
+		agg:   agg,
+		state: make(map[WindowKey[K]]Out),
+	}
+}
+
+func (a *WindowedAggregation[K, In, Out]) ReadMessage(ctx context.Context) (WindowKey[K], Out, error) {
+	msg, err := a.w.g.inner.ReadMessage(ctx)
+	if err != nil {
+		var (
+			o Out
+		)
+		return WindowKey[K]{}, o, err
+	}
+
+	windowStart := time.Now().Round(a.w.windows.Size)
+	windowEnd := windowStart.Add(a.w.windows.Advance)
+	msgKey := a.w.g.fn(msg)
+
+	key := WindowKey[K]{
+		Start: windowStart,
+		End:   windowEnd,
+		K:     msgKey,
+	}
+
+	if _, ok := a.state[key]; !ok {
+		a.state[key] = a.init
+	}
+	a.state[key] = a.agg(msgKey, msg, a.state[key])
+	return key, a.state[key], nil
+}
+
+func NewWindowedCount[K comparable, In any](w *TimeWindow[K, In]) KeyedReader[WindowKey[K], uint64] {
+	return &WindowedAggregation[K, In, uint64]{
+		w:    w,
+		init: 0,
+		agg: func(k K, i In, u uint64) uint64 {
+			return u + 1
+		},
+		state: make(map[WindowKey[K]]uint64),
 	}
 }

@@ -53,6 +53,7 @@ func TestReducer(t *testing.T) {
 		1, 2, 3,
 		10, 20, 30,
 	}}
+
 	gb := NewGroupBy[int, string](r, func(s int) string {
 		if s > 9 {
 			return "big"
