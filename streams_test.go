@@ -8,21 +8,22 @@ import (
 	"testing"
 )
 
-type TestReader struct {
-	st []string
+type TestReader[T any] struct {
+	st []T
 }
 
-func (m *TestReader) ReadMessage(ctx context.Context) (string, error) {
+func (m *TestReader[T]) ReadMessage(ctx context.Context) (T, error) {
 	if len(m.st) == 0 {
-		return "", io.EOF
+		var t T
+		return t, io.EOF
 	}
 	r := m.st[0]
 	m.st = m.st[1:]
 	return r, nil
 }
 
-func TestStreams(t *testing.T) {
-	r := &TestReader{st: []string{
+func TestWordCount(t *testing.T) {
+	r := &TestReader[string]{st: []string{
 		"the quick BROWN",
 		"fox JUMPS over",
 		"the lazy lazy dog",
@@ -40,6 +41,32 @@ func TestStreams(t *testing.T) {
 
 	for {
 		k, m, err := c.ReadMessage(context.Background())
+		if err != nil {
+			return
+		}
+		log.Printf("%q=%d", k, m)
+	}
+}
+
+func TestReducer(t *testing.T) {
+	r := &TestReader[int]{st: []int{
+		1, 2, 3,
+		10, 20, 30,
+	}}
+	gb := NewGroupBy[int, string](r, func(s int) string {
+		if s > 9 {
+			return "big"
+		} else {
+			return "small"
+		}
+	})
+
+	reducer := NewReducer[string, int](gb, 0, func(a, b int) int {
+		return a + b
+	})
+
+	for {
+		k, m, err := reducer.ReadMessage(context.Background())
 		if err != nil {
 			return
 		}
