@@ -40,7 +40,7 @@ func TestWordCount(t *testing.T) {
 	fm := NewFlatMapProcessor[string, string](func(s string) []string {
 		return strings.Split(s, " ")
 	})
-	m := NewMappedProcessor[string, int](func(s string) int {
+	_ = NewMappedProcessor[string, int](func(s string) int {
 		return len(s)
 	})
 
@@ -48,8 +48,10 @@ func TestWordCount(t *testing.T) {
 	a := NewStream(&e, r, StringDeserializer())
 	b := Through(a, rr)
 	c := Through(b, fm)
-	intStream := Through(c, m)
-	intStream.To(IntSerializer(), &TestWriter{})
+	// intStream := Through(c, m)
+	c.To(StringSerializer(), &TestWriter{})
+
+	e.Execute(context.Background())
 }
 
 /*

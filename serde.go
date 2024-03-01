@@ -15,6 +15,16 @@ func (s *stringDeserializer[T]) Read(ctx context.Context, msg []byte) (string, e
 	return string(msg), nil
 }
 
+func StringSerializer[T string]() Serializer[string] {
+	return &stringSerializer[string]{}
+}
+
+type stringSerializer[T string] struct{}
+
+func (s *stringSerializer[T]) Write(ctx context.Context, i string) ([]byte, error) {
+	return []byte(i), nil
+}
+
 func IntSerializer[T int]() Serializer[int] {
 	return &intSerializer[int]{}
 }

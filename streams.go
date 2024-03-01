@@ -2,6 +2,7 @@ package streams
 
 import (
 	"context"
+	"fmt"
 )
 
 type Source interface {
@@ -20,35 +21,137 @@ type Serializer[T any] interface {
 	Write(ctx context.Context, t T) ([]byte, error)
 }
 
-type Executor struct {
+type topologyNode interface {
+	setNext(n topologyNode)
+	do(ctx context.Context, a any) (e error)
 }
 
-func NewStream[T any](e *Executor, from Source, d Deserializer[T]) *Stream[T] {
-	return &Stream[T]{
-		source: from,
-		d:      d,
-		e:      e,
+type Executor struct {
+	root topologyNode
+	last topologyNode
+}
+
+func NewExecutor() *Executor {
+	return &Executor{}
+}
+
+func (e *Executor) Execute(ctx context.Context) error {
+	return e.root.do(ctx, nil)
+}
+
+type sourceNode[T any] struct {
+	source Source
+	d      Deserializer[T]
+	child  topologyNode
+}
+
+func (s *sourceNode[T]) setNext(n topologyNode) {
+	s.child = n
+}
+
+func (s *sourceNode[T]) do(ctx context.Context, a any) error {
+	msg, err := s.source.Read(ctx)
+	if err != nil {
+		return err
 	}
 
+	t, err := s.d.Read(ctx, msg)
+	if err != nil {
+		return err
+	}
+
+	return s.child.do(ctx, t)
+}
+
+type sinkNode[T any] struct {
+	sink Sink
+	s    Serializer[T]
+}
+
+func (s *sinkNode[T]) setNext(n topologyNode) {
+	panic("sink node cannot have a next node")
+}
+
+func (s *sinkNode[T]) do(ctx context.Context, a any) error {
+	t, ok := a.(T)
+	if !ok {
+		return fmt.Errorf("expected type %T, got %T", t, a)
+	}
+
+	msg, err := s.s.Write(ctx, t)
+	if err != nil {
+		return err
+	}
+
+	return s.sink.Write(ctx, msg)
+}
+
+type processorNode[In any, Out any] struct {
+	p   Processor[In, Out]
+	out topologyNode
+}
+
+func (s *processorNode[In, Out]) setNext(n topologyNode) {
+	s.out = n
+}
+
+func (s *processorNode[In, Out]) do(ctx context.Context, a any) error {
+	in, ok := a.(In)
+	if !ok {
+		return fmt.Errorf("expected type %T, got %T", in, a)
+	}
+
+	return s.p.ProcessMessage(ctx, in, func(o Out) error {
+		return s.out.do(ctx, o)
+	})
 }
 
 type Stream[T any] struct {
-	source Source
-	d      Deserializer[T]
-	sink   Sink
-	s      Serializer[T]
+	e        *Executor
+	node     topologyNode
+	sinkNode *sinkNode[T]
+}
 
-	e *Executor
+func NewStream[T any](e *Executor, from Source, d Deserializer[T]) *Stream[T] {
+	node := &sourceNode[T]{
+		source: from,
+		d:      d,
+	}
+
+	st := &Stream[T]{
+		node: node,
+		e:    e,
+	}
+
+	e.root = node
+	e.last = node
+
+	return st
 }
 
 func (s *Stream[T]) To(serializer Serializer[T], sink Sink) {
-	s.s = serializer
-	s.sink = sink
+	node := &sinkNode[T]{
+		sink: sink,
+		s:    serializer,
+	}
+
+	s.sinkNode = node
+
+	s.e.last.setNext(node)
+	s.e.last = node
 }
 
 func Through[In any, Out any](s *Stream[In], p Processor[In, Out]) *Stream[Out] {
+	node := &processorNode[In, Out]{
+		p: p,
+	}
+
+	s.e.last.setNext(node)
+	s.e.last = node
+
 	return &Stream[Out]{
-		e: s.e,
+		e:    s.e,
+		node: node,
 	}
 }
 
