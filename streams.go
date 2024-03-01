@@ -4,16 +4,16 @@ import (
 	"context"
 )
 
-type Reader[T any] interface {
+type Processor[T any] interface {
 	ReadMessage(ctx context.Context, next func(T) error) error
 }
 
 type FilteredReader[T any] struct {
-	inner Reader[T]
+	inner Processor[T]
 	fn    func(T) bool
 }
 
-func NewFilteredReader[T any](r Reader[T], fn func(T) bool) Reader[T] {
+func NewFilteredReader[T any](r Processor[T], fn func(T) bool) Processor[T] {
 	return &FilteredReader[T]{
 		inner: r,
 		fn:    fn,
@@ -30,11 +30,11 @@ func (m *FilteredReader[T]) ReadMessage(ctx context.Context, next func(T) error)
 }
 
 type MappedReeader[In any, Out any] struct {
-	inner Reader[In]
+	inner Processor[In]
 	fn    func(In) Out
 }
 
-func NewMappedReader[In any, Out any](r Reader[In], fn func(In) Out) Reader[Out] {
+func NewMappedReader[In any, Out any](r Processor[In], fn func(In) Out) Processor[Out] {
 	return &MappedReeader[In, Out]{
 		inner: r,
 		fn:    fn,
@@ -50,11 +50,11 @@ func (m *MappedReeader[In, Out]) ReadMessage(ctx context.Context, next func(msg 
 }
 
 type FlatMapReader[In any, Out any] struct {
-	inner Reader[In]
+	inner Processor[In]
 	fn    func(In) []Out
 }
 
-func NewFlatMapReader[In any, Out any](r Reader[In], fn func(In) []Out) Reader[Out] {
+func NewFlatMapReader[In any, Out any](r Processor[In], fn func(In) []Out) Processor[Out] {
 	return &FlatMapReader[In, Out]{
 		inner: r,
 		fn:    fn,

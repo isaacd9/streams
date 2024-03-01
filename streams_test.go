@@ -2,7 +2,8 @@ package streams
 
 import (
 	"context"
-	"io"
+	"log"
+	"strings"
 	"testing"
 )
 
@@ -10,14 +11,13 @@ type TestReader[T any] struct {
 	st []T
 }
 
-func (m *TestReader[T]) ReadMessage(ctx context.Context) (T, error) {
-	if len(m.st) == 0 {
-		var t T
-		return t, io.EOF
+func (m *TestReader[T]) ReadMessage(ctx context.Context, next func(T) error) error {
+	for _, v := range m.st {
+		if err := next(v); err != nil {
+			return err
+		}
 	}
-	r := m.st[0]
-	m.st = m.st[1:]
-	return r, nil
+	return nil
 }
 
 func TestWordCount(t *testing.T) {
@@ -26,6 +26,17 @@ func TestWordCount(t *testing.T) {
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
+	rr := NewMappedReader[string, string](r, func(s string) string {
+		return strings.ToLower(s)
+	})
+	fm := NewFlatMapReader[string, string](rr, func(s string) []string {
+		return strings.Split(s, " ")
+	})
+
+	fm.ReadMessage(context.Background(), func(s string) error {
+		log.Println(s)
+		return nil
+	})
 }
 
 /*
