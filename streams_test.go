@@ -2,46 +2,53 @@ package streams
 
 import (
 	"context"
+	"io"
 	"log"
 	"strings"
 	"testing"
 )
 
-type TestReader[T any] struct {
-	st []T
+type TestReader struct {
+	st []string
 }
 
-func (m *TestReader[T]) ProcessMessage(ctx context.Context, next func(T) error) error {
-	for _, v := range m.st {
-		if err := next(v); err != nil {
-			return err
-		}
+func (m *TestReader) Read(ctx context.Context) ([]byte, error) {
+	if len(m.st) == 0 {
+		return nil, io.EOF
 	}
+	r := m.st[0]
+	m.st = m.st[1:]
+	return []byte(r), nil
+}
+
+type TestWriter struct{}
+
+func (m *TestWriter) Write(ctx context.Context, msg []byte) error {
+	log.Printf("%s", string(msg))
 	return nil
 }
 
 func TestWordCount(t *testing.T) {
-	r := &TestReader[string]{st: []string{
+	r := &TestReader{st: []string{
 		"the quick BROWN",
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
-	rr := NewMappedProcessor[string, string](r, func(s string) string {
+	rr := NewMappedProcessor[string, string](func(s string) string {
 		return strings.ToLower(s)
 	})
-	fm := NewFlatMapProcessor[string, string](rr, func(s string) []string {
+	fm := NewFlatMapProcessor[string, string](func(s string) []string {
 		return strings.Split(s, " ")
 	})
-	m := NewMappedProcessor[string, int](fm, func(s string) int {
+	m := NewMappedProcessor[string, int](func(s string) int {
 		return len(s)
 	})
 
-	fm.ProcessMessage(context.Background(), func(s string) error {
-		log.Println(s)
-		return nil
-	})
-
-	st := NewStream[string](rr, fm, m)
+	st := NewStream[string](r, StringDeserializer())
+	Through[string, string](st, rr)
+	Through[string, string](st, fm)
+	intStream := Through[string, int](st, m)
+	intStream.To(context.Background(), IntSerializer(), &TestWriter{})
 }
 
 /*

@@ -4,93 +4,100 @@ import (
 	"context"
 )
 
-type Stream struct {
-	Processors []Processor[any]
+type Source interface {
+	Read(ctx context.Context) ([]byte, error)
 }
 
-func NewStream(p ...Processor[any]) *Stream {
-	return &Stream{
-		Processors: p,
+type Sink interface {
+	Write(ctx context.Context, msg []byte) error
+}
+
+type Deserializer[T any] interface {
+	Read(ctx context.Context, msg []byte) (T, error)
+}
+
+type Serializer[T any] interface {
+	Write(ctx context.Context, t T) ([]byte, error)
+}
+
+type Stream[T any] struct {
+	source Source
+	d      Deserializer[T]
+	sink   Sink
+	s      Serializer[T]
+}
+
+func NewStream[T any](from Source, d Deserializer[T]) *Stream[T] {
+	return &Stream[T]{
+		source: from,
+		d:      d,
 	}
 }
 
-func (s *Stream) Execute(ctx context.Context) error {
-	return s.Processors[0].ProcessMessage(ctx, func(any any) error {
-		return nil
-	})
+func (s *Stream[T]) To(ctx context.Context, serializer Serializer[T], sink Sink) {
+	s.s = serializer
+	s.sink = sink
 }
 
-type Processor[T any] interface {
-	ProcessMessage(ctx context.Context, next func(T) error) error
+func Through[In any, Out any](*Stream[In], Processor[In, Out]) *Stream[Out] {
+	// TODO: Implement this
+	return &Stream[Out]{}
+}
+
+type Processor[In any, Out any] interface {
+	ProcessMessage(ctx context.Context, msg In, next func(o Out) error) error
 }
 
 type FilteredProcessor[T any] struct {
-	inner Processor[T]
-	fn    func(T) bool
+	fn func(T) bool
 }
 
-func NewFilteredProcessor[T any](r Processor[T], fn func(T) bool) Processor[T] {
+func NewFilteredProcessor[T any](fn func(T) bool) Processor[T, T] {
 	return &FilteredProcessor[T]{
-		inner: r,
-		fn:    fn,
+		fn: fn,
 	}
 }
 
-func (m *FilteredProcessor[T]) ProcessMessage(ctx context.Context, next func(T) error) error {
-	return m.inner.ProcessMessage(ctx, func(msg T) error {
-		if m.fn(msg) {
-			return next(msg)
-		}
-		return nil
-	})
+func (m *FilteredProcessor[T]) ProcessMessage(ctx context.Context, msg T, next func(T) error) error {
+	if m.fn(msg) {
+		return next(msg)
+	}
+	return nil
 }
 
 type MappedReeader[In any, Out any] struct {
-	inner Processor[In]
-	fn    func(In) Out
+	fn func(In) Out
 }
 
-func NewMappedProcessor[In any, Out any](r Processor[In], fn func(In) Out) Processor[Out] {
+func NewMappedProcessor[In any, Out any](fn func(In) Out) Processor[In, Out] {
 	return &MappedReeader[In, Out]{
-		inner: r,
-		fn:    fn,
+		fn: fn,
 	}
 }
 
-func (m *MappedReeader[In, Out]) ProcessMessage(ctx context.Context, next func(msg Out) error) error {
-	return m.inner.ProcessMessage(ctx, func(msg In) error {
-		o := m.fn(msg)
-		next(o)
-		return nil
-	})
+func (m *MappedReeader[In, Out]) ProcessMessage(ctx context.Context, msg In, next func(o Out) error) error {
+	o := m.fn(msg)
+	return next(o)
 }
 
 type FlatMapProcessor[In any, Out any] struct {
-	inner Processor[In]
-	fn    func(In) []Out
+	fn func(In) []Out
 }
 
-func NewFlatMapProcessor[In any, Out any](r Processor[In], fn func(In) []Out) Processor[Out] {
+func NewFlatMapProcessor[In any, Out any](fn func(In) []Out) Processor[In, Out] {
 	return &FlatMapProcessor[In, Out]{
-		inner: r,
-		fn:    fn,
+		fn: fn,
 	}
 }
 
-func (m *FlatMapProcessor[In, Out]) ProcessMessage(ctx context.Context, next func(msg Out) error) error {
-	return m.inner.ProcessMessage(ctx, func(msg In) error {
-		outs := m.fn(msg)
-		for _, out := range outs {
-			if err := next(out); err != nil {
-				return err
-			}
+func (m *FlatMapProcessor[In, Out]) ProcessMessage(ctx context.Context, msg In, next func(msg Out) error) error {
+	outs := m.fn(msg)
+	for _, out := range outs {
+		if err := next(out); err != nil {
+			return err
 		}
-		return nil
-	})
-}
-
-type KeyedProcessor[K comparable, T any] interface {
-	ProcessMessage(ctx context.Context) (K, T, error)
+	}
+	return nil
 }
 
 /*
