@@ -2,11 +2,10 @@ package streams
 
 import (
 	"context"
-	"time"
 )
 
 type Reader[T any] interface {
-	ReadMessage(ctx context.Context) (T, error)
+	ReadMessage(ctx context.Context, next func(T) error) error
 }
 
 type FilteredReader[T any] struct {
@@ -21,17 +20,13 @@ func NewFilteredReader[T any](r Reader[T], fn func(T) bool) Reader[T] {
 	}
 }
 
-func (m *FilteredReader[T]) ReadMessage(ctx context.Context) (T, error) {
-	for {
-		msg, err := m.inner.ReadMessage(ctx)
-		if err != nil {
-			var t T
-			return t, err
-		}
+func (m *FilteredReader[T]) ReadMessage(ctx context.Context, next func(T) error) error {
+	return m.inner.ReadMessage(ctx, func(msg T) error {
 		if m.fn(msg) {
-			return msg, nil
+			return next(msg)
 		}
-	}
+		return nil
+	})
 }
 
 type MappedReeader[In any, Out any] struct {
@@ -46,21 +41,17 @@ func NewMappedReader[In any, Out any](r Reader[In], fn func(In) Out) Reader[Out]
 	}
 }
 
-func (m *MappedReeader[In, Out]) ReadMessage(ctx context.Context) (Out, error) {
-	msg, err := m.inner.ReadMessage(ctx)
-	if err != nil {
-		var o Out
-		return o, err
-	}
-
-	return m.fn(msg), err
+func (m *MappedReeader[In, Out]) ReadMessage(ctx context.Context, next func(msg Out) error) error {
+	return m.inner.ReadMessage(ctx, func(msg In) error {
+		o := m.fn(msg)
+		next(o)
+		return nil
+	})
 }
 
 type FlatMapReader[In any, Out any] struct {
 	inner Reader[In]
 	fn    func(In) []Out
-
-	batch []Out
 }
 
 func NewFlatMapReader[In any, Out any](r Reader[In], fn func(In) []Out) Reader[Out] {
@@ -70,25 +61,23 @@ func NewFlatMapReader[In any, Out any](r Reader[In], fn func(In) []Out) Reader[O
 	}
 }
 
-func (m *FlatMapReader[In, Out]) ReadMessage(ctx context.Context) (Out, error) {
-	if len(m.batch) == 0 {
-		msg, err := m.inner.ReadMessage(ctx)
-		if err != nil {
-			var o Out
-			return o, err
+func (m *FlatMapReader[In, Out]) ReadMessage(ctx context.Context, next func(msg Out) error) error {
+	return m.inner.ReadMessage(ctx, func(msg In) error {
+		outs := m.fn(msg)
+		for _, out := range outs {
+			if err := next(out); err != nil {
+				return err
+			}
 		}
-
-		m.batch = m.fn(msg)
-	}
-	r := m.batch[0]
-	m.batch = m.batch[1:]
-	return r, nil
+		return nil
+	})
 }
 
 type KeyedReader[K comparable, T any] interface {
 	ReadMessage(ctx context.Context) (K, T, error)
 }
 
+/*
 type GroupBy[In any, Key comparable] struct {
 	inner Reader[In]
 	fn    func(In) Key
@@ -270,3 +259,5 @@ func NewWindowedReducer[K comparable, V any](w *TimeWindow[K, V], reducer func(a
 		state: make(map[WindowKey[K]]V),
 	}
 }
+
+*/
