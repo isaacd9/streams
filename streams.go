@@ -41,7 +41,7 @@ type Stream[T any] struct {
 	e *Executor
 }
 
-func (s *Stream[T]) To(ctx context.Context, serializer Serializer[T], sink Sink) {
+func (s *Stream[T]) To(serializer Serializer[T], sink Sink) {
 	s.s = serializer
 	s.sink = sink
 }
