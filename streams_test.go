@@ -32,11 +32,16 @@ func TestWordCount(t *testing.T) {
 	fm := NewFlatMapProcessor[string, string](rr, func(s string) []string {
 		return strings.Split(s, " ")
 	})
+	m := NewMappedProcessor[string, int](fm, func(s string) int {
+		return len(s)
+	})
 
 	fm.ProcessMessage(context.Background(), func(s string) error {
 		log.Println(s)
 		return nil
 	})
+
+	st := NewStream[string](rr, fm, m)
 }
 
 /*

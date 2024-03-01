@@ -4,6 +4,22 @@ import (
 	"context"
 )
 
+type Stream struct {
+	Processors []Processor[any]
+}
+
+func NewStream(p ...Processor[any]) *Stream {
+	return &Stream{
+		Processors: p,
+	}
+}
+
+func (s *Stream) Execute(ctx context.Context) error {
+	return s.Processors[0].ProcessMessage(ctx, func(any any) error {
+		return nil
+	})
+}
+
 type Processor[T any] interface {
 	ProcessMessage(ctx context.Context, next func(T) error) error
 }
