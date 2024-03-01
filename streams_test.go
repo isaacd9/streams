@@ -44,10 +44,11 @@ func TestWordCount(t *testing.T) {
 		return len(s)
 	})
 
-	st := NewStream[string](r, StringDeserializer())
-	Through[string, string](st, rr)
-	Through[string, string](st, fm)
-	intStream := Through[string, int](st, m)
+	var e Executor
+	a := NewStream(&e, r, StringDeserializer())
+	b := Through(a, rr)
+	c := Through(b, fm)
+	intStream := Through(c, m)
 	intStream.To(context.Background(), IntSerializer(), &TestWriter{})
 }
 

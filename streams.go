@@ -20,18 +20,25 @@ type Serializer[T any] interface {
 	Write(ctx context.Context, t T) ([]byte, error)
 }
 
+type Executor struct {
+}
+
+func NewStream[T any](e *Executor, from Source, d Deserializer[T]) *Stream[T] {
+	return &Stream[T]{
+		source: from,
+		d:      d,
+		e:      e,
+	}
+
+}
+
 type Stream[T any] struct {
 	source Source
 	d      Deserializer[T]
 	sink   Sink
 	s      Serializer[T]
-}
 
-func NewStream[T any](from Source, d Deserializer[T]) *Stream[T] {
-	return &Stream[T]{
-		source: from,
-		d:      d,
-	}
+	e *Executor
 }
 
 func (s *Stream[T]) To(ctx context.Context, serializer Serializer[T], sink Sink) {
@@ -39,9 +46,10 @@ func (s *Stream[T]) To(ctx context.Context, serializer Serializer[T], sink Sink)
 	s.sink = sink
 }
 
-func Through[In any, Out any](*Stream[In], Processor[In, Out]) *Stream[Out] {
-	// TODO: Implement this
-	return &Stream[Out]{}
+func Through[In any, Out any](s *Stream[In], p Processor[In, Out]) *Stream[Out] {
+	return &Stream[Out]{
+		e: s.e,
+	}
 }
 
 type Processor[In any, Out any] interface {
