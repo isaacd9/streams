@@ -11,7 +11,7 @@ type TestReader[T any] struct {
 	st []T
 }
 
-func (m *TestReader[T]) ReadMessage(ctx context.Context, next func(T) error) error {
+func (m *TestReader[T]) ProcessMessage(ctx context.Context, next func(T) error) error {
 	for _, v := range m.st {
 		if err := next(v); err != nil {
 			return err
@@ -26,14 +26,14 @@ func TestWordCount(t *testing.T) {
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
-	rr := NewMappedReader[string, string](r, func(s string) string {
+	rr := NewMappedProcessor[string, string](r, func(s string) string {
 		return strings.ToLower(s)
 	})
-	fm := NewFlatMapReader[string, string](rr, func(s string) []string {
+	fm := NewFlatMapProcessor[string, string](rr, func(s string) []string {
 		return strings.Split(s, " ")
 	})
 
-	fm.ReadMessage(context.Background(), func(s string) error {
+	fm.ProcessMessage(context.Background(), func(s string) error {
 		log.Println(s)
 		return nil
 	})

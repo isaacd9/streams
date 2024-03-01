@@ -5,23 +5,23 @@ import (
 )
 
 type Processor[T any] interface {
-	ReadMessage(ctx context.Context, next func(T) error) error
+	ProcessMessage(ctx context.Context, next func(T) error) error
 }
 
-type FilteredReader[T any] struct {
+type FilteredProcessor[T any] struct {
 	inner Processor[T]
 	fn    func(T) bool
 }
 
-func NewFilteredReader[T any](r Processor[T], fn func(T) bool) Processor[T] {
-	return &FilteredReader[T]{
+func NewFilteredProcessor[T any](r Processor[T], fn func(T) bool) Processor[T] {
+	return &FilteredProcessor[T]{
 		inner: r,
 		fn:    fn,
 	}
 }
 
-func (m *FilteredReader[T]) ReadMessage(ctx context.Context, next func(T) error) error {
-	return m.inner.ReadMessage(ctx, func(msg T) error {
+func (m *FilteredProcessor[T]) ProcessMessage(ctx context.Context, next func(T) error) error {
+	return m.inner.ProcessMessage(ctx, func(msg T) error {
 		if m.fn(msg) {
 			return next(msg)
 		}
@@ -34,35 +34,35 @@ type MappedReeader[In any, Out any] struct {
 	fn    func(In) Out
 }
 
-func NewMappedReader[In any, Out any](r Processor[In], fn func(In) Out) Processor[Out] {
+func NewMappedProcessor[In any, Out any](r Processor[In], fn func(In) Out) Processor[Out] {
 	return &MappedReeader[In, Out]{
 		inner: r,
 		fn:    fn,
 	}
 }
 
-func (m *MappedReeader[In, Out]) ReadMessage(ctx context.Context, next func(msg Out) error) error {
-	return m.inner.ReadMessage(ctx, func(msg In) error {
+func (m *MappedReeader[In, Out]) ProcessMessage(ctx context.Context, next func(msg Out) error) error {
+	return m.inner.ProcessMessage(ctx, func(msg In) error {
 		o := m.fn(msg)
 		next(o)
 		return nil
 	})
 }
 
-type FlatMapReader[In any, Out any] struct {
+type FlatMapProcessor[In any, Out any] struct {
 	inner Processor[In]
 	fn    func(In) []Out
 }
 
-func NewFlatMapReader[In any, Out any](r Processor[In], fn func(In) []Out) Processor[Out] {
-	return &FlatMapReader[In, Out]{
+func NewFlatMapProcessor[In any, Out any](r Processor[In], fn func(In) []Out) Processor[Out] {
+	return &FlatMapProcessor[In, Out]{
 		inner: r,
 		fn:    fn,
 	}
 }
 
-func (m *FlatMapReader[In, Out]) ReadMessage(ctx context.Context, next func(msg Out) error) error {
-	return m.inner.ReadMessage(ctx, func(msg In) error {
+func (m *FlatMapProcessor[In, Out]) ProcessMessage(ctx context.Context, next func(msg Out) error) error {
+	return m.inner.ProcessMessage(ctx, func(msg In) error {
 		outs := m.fn(msg)
 		for _, out := range outs {
 			if err := next(out); err != nil {
@@ -73,25 +73,25 @@ func (m *FlatMapReader[In, Out]) ReadMessage(ctx context.Context, next func(msg 
 	})
 }
 
-type KeyedReader[K comparable, T any] interface {
-	ReadMessage(ctx context.Context) (K, T, error)
+type KeyedProcessor[K comparable, T any] interface {
+	ProcessMessage(ctx context.Context) (K, T, error)
 }
 
 /*
 type GroupBy[In any, Key comparable] struct {
-	inner Reader[In]
+	inner Processor[In]
 	fn    func(In) Key
 }
 
-func NewGroupBy[In any, Key comparable](r Reader[In], fn func(In) Key) *GroupBy[In, Key] {
+func NewGroupBy[In any, Key comparable](r Processor[In], fn func(In) Key) *GroupBy[In, Key] {
 	return &GroupBy[In, Key]{
 		inner: r,
 		fn:    fn,
 	}
 }
 
-func (g *GroupBy[In, Key]) ReadMessage(ctx context.Context) (Key, In, error) {
-	msg, err := g.inner.ReadMessage(ctx)
+func (g *GroupBy[In, Key]) ProcessMessage(ctx context.Context) (Key, In, error) {
+	msg, err := g.inner.ProcessMessage(ctx)
 	if err != nil {
 		var (
 			i In
@@ -112,7 +112,7 @@ type Aggregation[K comparable, In any, Out any] struct {
 	state map[K]Out
 }
 
-func NewAggregation[K comparable, In any, Out any](g *GroupBy[In, K], init Out, agg func(K, In, Out) Out) KeyedReader[K, Out] {
+func NewAggregation[K comparable, In any, Out any](g *GroupBy[In, K], init Out, agg func(K, In, Out) Out) KeyedProcessor[K, Out] {
 	return &Aggregation[K, In, Out]{
 		g:     g,
 		init:  init,
@@ -121,8 +121,8 @@ func NewAggregation[K comparable, In any, Out any](g *GroupBy[In, K], init Out, 
 	}
 }
 
-func (a *Aggregation[K, In, Out]) ReadMessage(ctx context.Context) (K, Out, error) {
-	key, msg, err := a.g.ReadMessage(ctx)
+func (a *Aggregation[K, In, Out]) ProcessMessage(ctx context.Context) (K, Out, error) {
+	key, msg, err := a.g.ProcessMessage(ctx)
 	if err != nil {
 		var (
 			k K
@@ -138,7 +138,7 @@ func (a *Aggregation[K, In, Out]) ReadMessage(ctx context.Context) (K, Out, erro
 	return key, a.state[key], nil
 }
 
-func NewReducer[K comparable, V any](g *GroupBy[V, K], init V, reducer func(a, b V) V) KeyedReader[K, V] {
+func NewReducer[K comparable, V any](g *GroupBy[V, K], init V, reducer func(a, b V) V) KeyedProcessor[K, V] {
 	var v V
 	return &Aggregation[K, V, V]{
 		g:    g,
@@ -150,7 +150,7 @@ func NewReducer[K comparable, V any](g *GroupBy[V, K], init V, reducer func(a, b
 	}
 }
 
-func NewCount[K comparable, In any](g *GroupBy[In, K]) KeyedReader[K, uint64] {
+func NewCount[K comparable, In any](g *GroupBy[In, K]) KeyedProcessor[K, uint64] {
 	return &Aggregation[K, In, uint64]{
 		g:    g,
 		init: 0,
@@ -173,12 +173,12 @@ type WindowKey[K comparable] struct {
 }
 
 type TimeWindow[K comparable, V any] struct {
-	inner   KeyedReader[K, V]
+	inner   KeyedProcessor[K, V]
 	windows TimeWindowCfg
 }
 
-func (w *TimeWindow[K, V]) ReadMessage(ctx context.Context) (WindowKey[K], V, error) {
-	msgKey, msg, err := w.inner.ReadMessage(ctx)
+func (w *TimeWindow[K, V]) ProcessMessage(ctx context.Context) (WindowKey[K], V, error) {
+	msgKey, msg, err := w.inner.ProcessMessage(ctx)
 	if err != nil {
 		var (
 			v V
@@ -198,7 +198,7 @@ func (w *TimeWindow[K, V]) ReadMessage(ctx context.Context) (WindowKey[K], V, er
 	return key, msg, nil
 }
 
-func NewTimeWindow[K comparable, V any](inner KeyedReader[K, V], windows TimeWindowCfg) *TimeWindow[K, V] {
+func NewTimeWindow[K comparable, V any](inner KeyedProcessor[K, V], windows TimeWindowCfg) *TimeWindow[K, V] {
 	return &TimeWindow[K, V]{
 		inner:   inner,
 		windows: windows,
@@ -214,7 +214,7 @@ type WindowedAggregation[K comparable, In any, Out any] struct {
 	state map[WindowKey[K]]Out
 }
 
-func NewWindowedAggregation[K comparable, In any, Out any](w *TimeWindow[K, In], init Out, agg func(K, In, Out) Out) KeyedReader[WindowKey[K], Out] {
+func NewWindowedAggregation[K comparable, In any, Out any](w *TimeWindow[K, In], init Out, agg func(K, In, Out) Out) KeyedProcessor[WindowKey[K], Out] {
 	return &WindowedAggregation[K, In, Out]{
 		w:     w,
 		init:  init,
@@ -223,8 +223,8 @@ func NewWindowedAggregation[K comparable, In any, Out any](w *TimeWindow[K, In],
 	}
 }
 
-func (a *WindowedAggregation[K, In, Out]) ReadMessage(ctx context.Context) (WindowKey[K], Out, error) {
-	key, msg, err := a.w.ReadMessage(ctx)
+func (a *WindowedAggregation[K, In, Out]) ProcessMessage(ctx context.Context) (WindowKey[K], Out, error) {
+	key, msg, err := a.w.ProcessMessage(ctx)
 	if err != nil {
 		var o Out
 		return WindowKey[K]{}, o, err
@@ -237,7 +237,7 @@ func (a *WindowedAggregation[K, In, Out]) ReadMessage(ctx context.Context) (Wind
 	return key, a.state[key], nil
 }
 
-func NewWindowedCount[K comparable, In any](w *TimeWindow[K, In]) KeyedReader[WindowKey[K], uint64] {
+func NewWindowedCount[K comparable, In any](w *TimeWindow[K, In]) KeyedProcessor[WindowKey[K], uint64] {
 	return &WindowedAggregation[K, In, uint64]{
 		w:    w,
 		init: 0,
@@ -248,7 +248,7 @@ func NewWindowedCount[K comparable, In any](w *TimeWindow[K, In]) KeyedReader[Wi
 	}
 }
 
-func NewWindowedReducer[K comparable, V any](w *TimeWindow[K, V], reducer func(a, b V) V) KeyedReader[WindowKey[K], V] {
+func NewWindowedReducer[K comparable, V any](w *TimeWindow[K, V], reducer func(a, b V) V) KeyedProcessor[WindowKey[K], V] {
 	var v V
 	return &WindowedAggregation[K, V, V]{
 		w:    w,
