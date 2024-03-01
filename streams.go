@@ -2,7 +2,9 @@ package streams
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 )
 
 type Source interface {
@@ -50,17 +52,21 @@ func (s *sourceNode[T]) setNext(n topologyNode) {
 }
 
 func (s *sourceNode[T]) do(ctx context.Context, a any) error {
-	msg, err := s.source.Read(ctx)
-	if err != nil {
-		return err
-	}
+	for {
+		msg, err := s.source.Read(ctx)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
 
-	t, err := s.d.Read(ctx, msg)
-	if err != nil {
-		return err
+		t, err := s.d.Read(ctx, msg)
+		if err != nil {
+			return err
+		}
+		s.child.do(ctx, t)
 	}
-
-	return s.child.do(ctx, t)
 }
 
 type sinkNode[T any] struct {
