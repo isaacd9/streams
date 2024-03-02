@@ -66,16 +66,10 @@ func TestInProcessWordCount(t *testing.T) {
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
-	unmarshal := Map(r, func(r Message) Record[string, string] {
-		return Record[string, string]{
-			Key:   string(r.Key),
-			Value: string(r.Value),
-		}
-	})
-	split := FlatMapValues[string](unmarshal, func(s string) []string {
+	split := FlatMapValues(UnmarshalString(r), func(s string) []string {
 		return strings.Split(s, " ")
 	})
-	rekey := Map[string, string, string, string](split, func(r Record[string, string]) Record[string, string] {
+	rekey := Map(split, func(r Record[string, string]) Record[string, string] {
 		return Record[string, string]{
 			Key: strings.ToLower(r.Value),
 		}
@@ -101,13 +95,7 @@ func TestThroughWordCount(t *testing.T) {
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
-	unmarshal := Map(r, func(r Message) Record[string, string] {
-		return Record[string, string]{
-			Key:   string(r.Key),
-			Value: string(r.Value),
-		}
-	})
-	split := FlatMapValues(unmarshal, func(s string) []string {
+	split := FlatMapValues(UnmarshalString(r), func(s string) []string {
 		return strings.Split(s, " ")
 	})
 	rekey := Map(split, func(r Record[string, string]) Record[string, string] {
@@ -115,15 +103,9 @@ func TestThroughWordCount(t *testing.T) {
 			Key: strings.ToLower(r.Value),
 		}
 	})
-	rekeyMarshal := Map(rekey, func(r Record[string, string]) Message {
-		return Message{
-			Key:   []byte(fmt.Sprintf("%v", r.Key)),
-			Value: []byte(fmt.Sprintf("%v", r.Value)),
-		}
-	})
 
 	go func() {
-		Pipe(rekeyMarshal, intermediate)
+		Pipe(MarshalAny(rekey), intermediate)
 		intermediate.Close()
 	}()
 
@@ -134,14 +116,7 @@ func TestThroughWordCount(t *testing.T) {
 		}
 	})
 	count := Count(um, NewMapState[string, uint64]())
-	marshal := Map(count, func(r Record[string, uint64]) Message {
-		return Message{
-			Key:   []byte(fmt.Sprintf("%v", r.Key)),
-			Value: []byte(fmt.Sprintf("%v", r.Value)),
-		}
-	})
-
-	Pipe(marshal, &TestWriter{})
+	Pipe(MarshalAny(count), &TestWriter{})
 }
 
 /*
