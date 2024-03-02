@@ -1,6 +1,8 @@
 package streams
 
-import "context"
+import (
+	"context"
+)
 
 type NoopPipe struct {
 	ch chan Message

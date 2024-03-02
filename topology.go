@@ -89,20 +89,21 @@ type pipedNode[K any, V any] struct {
 }
 
 func (s *pipedNode[K, V]) setNext(n topologyNode) {
-	s.source = n
+	s.source.setNext(n)
+}
+
+func (s *pipedNode[K, V]) run(ctx context.Context) error {
+	return s.source.do(ctx, nil)
 }
 
 func (s *pipedNode[K, V]) do(ctx context.Context, a any) error {
-	var err error
-	go func() {
-		err = s.sink.do(ctx, a)
-	}()
-
-	if err = s.source.do(ctx, a); err != nil {
-		return err
+	in, ok := a.(Record[K, V])
+	if !ok {
+		return fmt.Errorf("expected type %T, got %T", in, a)
 	}
 
-	return nil
+	return s.sink.do(ctx, a)
+
 }
 
 /*

@@ -90,19 +90,22 @@ func Process[KIn, VIn, KOut, VOut any](s *Stream[KIn, VIn], p Processor[KIn, VIn
 }
 
 func Through[K, V any](s *Stream[K, V], p Pipe, serde SerDe[K, V]) *Stream[K, V] {
-	sink := &sinkNode[K, V]{
-		sink: p,
-		s:    serde,
-	}
-	source := &sourceNode[K, V]{
-		source: p,
-		d:      serde,
+	node := &pipedNode[K, V]{
+		sink: &sinkNode[K, V]{
+			sink: p,
+			s:    serde,
+		},
+		source: &sourceNode[K, V]{
+			source: p,
+			d:      serde,
+		},
 	}
 
-	node := &pipedNode[K, V]{
-		sink:   sink,
-		source: source,
-	}
+	// Todo: We should register the nodes that need to run concurrently and
+	// run them in the executor
+	go func() {
+		node.run(context.Background())
+	}()
 
 	s.e.last.setNext(node)
 	s.e.last = node
