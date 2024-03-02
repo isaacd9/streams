@@ -59,10 +59,22 @@ func (m *MapReader[KIn, VIn, KOut, VOut]) Read(ctx context.Context) (Record[KOut
 	return m.fn(msg), nil
 }
 
-func Map[KIn, VIn, KOut, VOut any](r Reader[KIn, VIn], fn func(Record[KIn, VIn]) Record[KOut, VOut]) Reader[KOut, VOut] {
+type KeyValue[K any, V any] struct {
+	Key   K
+	Value V
+}
+
+func Map[KIn, VIn, KOut, VOut any](r Reader[KIn, VIn], fn func(kv KeyValue[KIn, VIn]) KeyValue[KOut, VOut]) Reader[KOut, VOut] {
 	return &MapReader[KIn, VIn, KOut, VOut]{
-		r:  r,
-		fn: fn,
+		r: r,
+		fn: func(msg Record[KIn, VIn]) Record[KOut, VOut] {
+			kv := fn(KeyValue[KIn, VIn]{msg.Key, msg.Value})
+			return Record[KOut, VOut]{
+				Key:   kv.Key,
+				Value: kv.Value,
+				Time:  msg.Time,
+			}
+		},
 	}
 }
 
@@ -73,6 +85,7 @@ func MapValues[K, VIn, VOut any](r Reader[K, VIn], fn func(VIn) VOut) Reader[K, 
 			return Record[K, VOut]{
 				Key:   msg.Key,
 				Value: fn(msg.Value),
+				Time:  msg.Time,
 			}
 		},
 	}
@@ -85,6 +98,7 @@ func MapKeys[KIn, KOut, V any](r Reader[KIn, V], fn func(KIn) KOut) Reader[KOut,
 			return Record[KOut, V]{
 				Key:   fn(msg.Key),
 				Value: msg.Value,
+				Time:  msg.Time,
 			}
 		},
 	}
@@ -110,10 +124,21 @@ func (f *FlatMapReader[KIn, VIn, KOut, VOut]) Read(ctx context.Context) (Record[
 	return out, nil
 }
 
-func FlatMap[KIn, VIn, KOut, VOut any](r Reader[KIn, VIn], fn func(Record[KIn, VIn]) []Record[KOut, VOut]) Reader[KOut, VOut] {
+func FlatMap[KIn, VIn, KOut, VOut any](r Reader[KIn, VIn], fn func(KeyValue[KIn, VIn]) []KeyValue[KOut, VOut]) Reader[KOut, VOut] {
 	return &FlatMapReader[KIn, VIn, KOut, VOut]{
-		r:  r,
-		fn: fn,
+		r: r,
+		fn: func(r Record[KIn, VIn]) []Record[KOut, VOut] {
+			kv := KeyValue[KIn, VIn]{r.Key, r.Value}
+			var batch []Record[KOut, VOut]
+			for _, kv := range fn(kv) {
+				batch = append(batch, Record[KOut, VOut]{
+					Key:   kv.Key,
+					Value: kv.Value,
+					Time:  r.Time,
+				})
+			}
+			return batch
+		},
 	}
 }
 
@@ -127,6 +152,7 @@ func FlatMapValues[K, VIn, VOut any](r Reader[K, VIn], fn func(VIn) []VOut) Read
 				batch[i] = Record[K, VOut]{
 					Key:   msg.Key,
 					Value: out,
+					Time:  msg.Time,
 				}
 			}
 			return batch
@@ -144,6 +170,7 @@ func FlatMapKeys[KIn, KOut, V any](r Reader[KIn, V], fn func(KIn) []KOut) Reader
 				batch[i] = Record[KOut, V]{
 					Key:   out,
 					Value: msg.Value,
+					Time:  msg.Time,
 				}
 			}
 			return batch

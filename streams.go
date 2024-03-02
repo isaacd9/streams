@@ -11,7 +11,7 @@ type Message = Record[[]byte, []byte]
 type Record[K, V any] struct {
 	Key   K
 	Value V
-	time  time.Time
+	Time  time.Time
 }
 
 type Reader[K, V any] interface {

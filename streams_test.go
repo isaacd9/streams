@@ -2,7 +2,6 @@ package streams
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log"
 	"strconv"
@@ -37,13 +36,7 @@ func TestWordLen(t *testing.T) {
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
-	unmarshal := Map(r, func(r Message) Record[string, string] {
-		return Record[string, string]{
-			Key:   string(r.Key),
-			Value: string(r.Value),
-		}
-	})
-	lowercase := MapValues(unmarshal, func(in string) string {
+	lowercase := MapValues(UnmarshalString(r), func(in string) string {
 		return strings.ToLower(in)
 	})
 	split := FlatMapValues(lowercase, func(s string) []string {
@@ -52,14 +45,8 @@ func TestWordLen(t *testing.T) {
 	length := MapValues(split, func(s string) uint64 {
 		return uint64(len(s))
 	})
-	marshal := Map(length, func(r Record[string, uint64]) Message {
-		return Message{
-			Key:   []byte(fmt.Sprintf("%v", r.Key)),
-			Value: []byte(fmt.Sprintf("%v", r.Value)),
-		}
-	})
 
-	Pipe(marshal, &TestWriter{})
+	Pipe(MarshalAny(length), &TestWriter{})
 }
 
 func TestInProcessWordCount(t *testing.T) {
@@ -71,22 +58,14 @@ func TestInProcessWordCount(t *testing.T) {
 	split := FlatMapValues(UnmarshalString(r), func(s string) []string {
 		return strings.Split(s, " ")
 	})
-	rekey := Map(split, func(r Record[string, string]) Record[string, string] {
-		return Record[string, string]{
+	rekey := Map(split, func(r KeyValue[string, string]) KeyValue[string, string] {
+		return KeyValue[string, string]{
 			Key: strings.ToLower(r.Value),
 		}
 	})
 
 	count := Count(rekey, NewMapState[string, uint64]())
-
-	marshal := Map(count, func(r Record[string, uint64]) Message {
-		return Message{
-			Key:   []byte(fmt.Sprintf("%v", r.Key)),
-			Value: []byte(fmt.Sprintf("%v", r.Value)),
-		}
-	})
-
-	Pipe(marshal, &TestWriter{})
+	Pipe(MarshalAny(count), &TestWriter{})
 }
 
 func TestThroughWordCount(t *testing.T) {
@@ -101,8 +80,8 @@ func TestThroughWordCount(t *testing.T) {
 		split := FlatMapValues(UnmarshalString(r), func(s string) []string {
 			return strings.Split(s, " ")
 		})
-		rekey := Map(split, func(r Record[string, string]) Record[string, string] {
-			return Record[string, string]{
+		rekey := Map(split, func(r KeyValue[string, string]) KeyValue[string, string] {
+			return KeyValue[string, string]{
 				Key: strings.ToLower(r.Value),
 			}
 		})
@@ -133,8 +112,8 @@ func TestWindowedWordCount(t *testing.T) {
 		split := FlatMapValues(UnmarshalString(r), func(s string) []string {
 			return strings.Split(s, " ")
 		})
-		rekey := Map(split, func(r Record[string, string]) Record[string, string] {
-			return Record[string, string]{
+		rekey := Map(split, func(r KeyValue[string, string]) KeyValue[string, string] {
+			return KeyValue[string, string]{
 				Key: strings.ToLower(r.Value),
 			}
 		})
@@ -175,14 +154,14 @@ func TestReducer(t *testing.T) {
 		return n
 	})
 
-	repartition := Map(parse, func(r Record[string, int]) Record[string, int] {
+	repartition := Map(parse, func(r KeyValue[string, int]) KeyValue[string, int] {
 		var k string
 		if r.Value < 10 {
 			k = "small"
 		} else {
 			k = "big"
 		}
-		return Record[string, int]{
+		return KeyValue[string, int]{
 			Key:   k,
 			Value: r.Value,
 		}
