@@ -1,6 +1,7 @@
 package streams
 
 import (
+	"fmt"
 	"strconv"
 )
 
@@ -51,5 +52,18 @@ func (s *intMarshaler) Marshal(i Record[string, uint64]) (Message, error) {
 	return Message{
 		Key: []byte(i.Key),
 		Val: []byte(strconv.Itoa(int(i.Val))),
+	}, nil
+}
+
+func AnyMarshaler[K any, V any]() Marshaler[K, V] {
+	return &anyMarshaler[K, V]{}
+}
+
+type anyMarshaler[K any, V any] struct{}
+
+func (s *anyMarshaler[K, V]) Marshal(i Record[K, V]) (Message, error) {
+	return Message{
+		Key: []byte(fmt.Sprintf("%+v", i.Key)),
+		Val: []byte(fmt.Sprintf("%+v", i.Val)),
 	}, nil
 }

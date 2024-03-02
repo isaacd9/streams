@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"testing"
+	"time"
 )
 
 type TestReader struct {
@@ -76,45 +77,47 @@ func TestWordCount(t *testing.T) {
 	s := NewStream(ex, r, StringUnmarshaler())
 	s = Process(s, fm)
 	s = Process(s, makeKeys)
-	// e := GrouBy(c, g)
 	s = Through(s, pipe, StringMarshalerUnmarshaler())
-	a := Aggregate[string, string, uint64](s, counter)
+	a := Aggregate(s, counter)
 	To(ToStream(a), IntMarshaler(), &TestWriter{})
 
 	ex.Execute(context.Background())
 }
 
-/*
 func TestWindowedWordCount(t *testing.T) {
-	r := &TestReader[string]{st: []string{
+	r := &TestReader{st: []string{
 		"the quick BROWN",
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
-	rr := NewMappedReader[string, string](r, func(s string) string {
-		return strings.ToLower(s)
-	})
-	fm := NewFlatMapReader[string, string](rr, func(s string) []string {
+	fm := FlatMapValues[string](func(s string) []string {
 		return strings.Split(s, " ")
 	})
-	gb := NewGroupBy[string, string](fm, func(s string) string {
-		return s
+	makeKeys := Map[string, string, string, string](func(r Record[string, string]) Record[string, string] {
+		return Record[string, string]{Key: strings.ToLower(r.Val)}
 	})
-	w := NewTimeWindow[string, string](gb, TimeWindowCfg{
-		Size:    10 * time.Millisecond,
-		Advance: 10 * time.Millisecond,
-	})
-	c := NewWindowedCount[string, string](w)
 
-	for {
-		k, m, err := c.ReadMessage(context.Background())
-		if err != nil {
-			return
-		}
-		log.Printf("%q=%d", k, m)
-	}
+	pipe := NewNoopPipe()
+
+	ex := NewExecutor()
+
+	counter := NewCount[WindowKey[string], string](NewMapState[WindowKey[string], uint64]())
+
+	s := NewStream(ex, r, StringUnmarshaler())
+	s = Process(s, fm)
+	s = Process(s, makeKeys)
+	s = Through(s, pipe, StringMarshalerUnmarshaler())
+	w := Window(s, NewRealTimeWindow[string, string](TimeWindows{
+		Size:    1 * time.Minute,
+		Advance: 1 * time.Minute,
+	}))
+	aa := Aggregate(w, counter)
+	To(ToStream(aa), AnyMarshaler[WindowKey[string], uint64](), &TestWriter{})
+
+	ex.Execute(context.Background())
 }
 
+/*
 func TestReducer(t *testing.T) {
 	r := &TestReader[int]{st: []int{
 		1, 2, 3,

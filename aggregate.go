@@ -2,40 +2,12 @@ package streams
 
 import "context"
 
-// State is a very simple key-value store.
-type State[K comparable, V any] interface {
-	Get(k K) (V, error)
-	Put(k K, v V) error
-}
-
-type MapState[K comparable, V any] struct {
-	m map[K]V
-}
-
-func (m *MapState[K, V]) Get(k K) (V, error) {
-	v := m.m[k]
-	return v, nil
-}
-
-func (m *MapState[K, V]) Put(k K, v V) error {
-	m.m[k] = v
-	return nil
-}
-
-func NewMapState[K comparable, V any]() State[K, V] {
-	return &MapState[K, V]{
-		m: make(map[K]V),
-	}
-}
-
 type Aggregator[K comparable, VIn, VOut any] interface {
-	Aggregate(context.Context, Record[K, VIn], func(o Record[K, VOut]) error) error
+	Aggregate(context.Context, Record[K, VIn], func(Record[K, VOut]) error) error
 }
 
 type Aggregation[K comparable, In any, Out any] struct {
-	agg func(Record[K, In], Out) Out
-
-	// TODO: Replace this with an interface!
+	agg   func(Record[K, In], Out) Out
 	state State[K, Out]
 }
 

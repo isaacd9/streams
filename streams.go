@@ -2,6 +2,7 @@ package streams
 
 import (
 	"context"
+	"time"
 )
 
 type Message struct {
@@ -18,8 +19,9 @@ type Sink interface {
 }
 
 type Record[K, V any] struct {
-	Key K
-	Val V
+	Key  K
+	Val  V
+	time time.Time
 }
 
 type Pipe interface {
@@ -112,6 +114,22 @@ func Through[K, V any](s *Stream[K, V], p Pipe, serde MarshalerUnmarshaler[K, V]
 	}
 }
 
+func Window[K comparable, V any](s *Stream[K, V], w Windower[K, V]) *Stream[WindowKey[K], V] {
+	node := &windowNode[K, V]{
+		w: w,
+	}
+
+	ks := &Stream[WindowKey[K], V]{
+		e:    s.e,
+		node: node,
+	}
+
+	s.e.last.setNext(node)
+	s.e.last = node
+
+	return ks
+}
+
 type KeyedStream[K comparable, V any] struct {
 	e    *Executor
 	node topologyNode
@@ -141,23 +159,6 @@ func Aggregate[K comparable, VIn any, VOut any](s *Stream[K, VIn], agg Aggregato
 }
 
 /*
-func NewReducer[K comparable, V any](g *GroupBy[V, K], init V, reducer func(a, b V) V) KeyedProcessor[K, V] {
-	var v V
-	return &Aggregation[K, V, V]{
-		g:    g,
-		init: v,
-		agg: func(k K, v1, v2 V) V {
-			return reducer(v1, v2)
-		},
-		state: make(map[K]V),
-	}
-}
-
-type TimeWindowCfg struct {
-	Size    time.Duration
-	Advance time.Duration
-}
-
 type WindowKey[K comparable] struct {
 	Start time.Time
 	End   time.Time

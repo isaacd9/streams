@@ -130,3 +130,23 @@ func (s *aggregatorNode[K, VIn, VOut]) do(ctx context.Context, a any) error {
 		return s.out.do(ctx, o)
 	})
 }
+
+type windowNode[K comparable, V any] struct {
+	w   Windower[K, V]
+	out topologyNode
+}
+
+func (s *windowNode[K, V]) setNext(n topologyNode) {
+	s.out = n
+}
+
+func (s *windowNode[K, V]) do(ctx context.Context, a any) error {
+	in, ok := a.(Record[K, V])
+	if !ok {
+		return fmt.Errorf("expected type %T, got %T", in, a)
+	}
+
+	return s.w.Window(ctx, in, func(o Record[WindowKey[K], V]) error {
+		return s.out.do(ctx, o)
+	})
+}
