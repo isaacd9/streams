@@ -37,7 +37,7 @@ func (s *sourceNode[K, V]) do(ctx context.Context, a any) error {
 			return err
 		}
 
-		t, err := s.d.Read(ctx, msg)
+		t, err := s.d.Unmarshal(msg)
 		if err != nil {
 			return err
 		}
@@ -60,7 +60,7 @@ func (s *sinkNode[K, V]) do(ctx context.Context, a any) error {
 		return fmt.Errorf("expected type %T, got %T", t, a)
 	}
 
-	msg, err := s.s.Write(ctx, t)
+	msg, err := s.s.Marshal(t)
 	if err != nil {
 		return err
 	}

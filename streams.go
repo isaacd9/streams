@@ -28,11 +28,11 @@ type Pipe interface {
 }
 
 type Unmarshaler[K, V any] interface {
-	Read(ctx context.Context, msg Message) (Record[K, V], error)
+	Unmarshal(msg Message) (Record[K, V], error)
 }
 
 type Marshaler[K, V any] interface {
-	Write(ctx context.Context, t Record[K, V]) (Message, error)
+	Marshal(t Record[K, V]) (Message, error)
 }
 
 type MarshalerUnmarshaler[K, V any] interface {

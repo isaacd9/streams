@@ -1,7 +1,6 @@
 package streams
 
 import (
-	"context"
 	"strconv"
 )
 
@@ -11,7 +10,7 @@ func StringUnmarshaler() Unmarshaler[string, string] {
 
 type stringUnmarshaler struct{}
 
-func (s *stringUnmarshaler) Read(ctx context.Context, msg Message) (Record[string, string], error) {
+func (s *stringUnmarshaler) Unmarshal(msg Message) (Record[string, string], error) {
 	return Record[string, string]{
 		Key: string(msg.Key),
 		Val: string(msg.Val),
@@ -24,7 +23,7 @@ func StringMarshaler() Marshaler[string, string] {
 
 type stringMarshaler struct{}
 
-func (s *stringMarshaler) Write(ctx context.Context, r Record[string, string]) (Message, error) {
+func (s *stringMarshaler) Marshal(r Record[string, string]) (Message, error) {
 	return Message{
 		Key: []byte(r.Key),
 		Val: []byte(r.Val),
@@ -49,7 +48,7 @@ func IntMarshaler() Marshaler[string, int] {
 
 type intMarshaler struct{}
 
-func (s *intMarshaler) Write(ctx context.Context, i Record[string, int]) (Message, error) {
+func (s *intMarshaler) Marshal(i Record[string, int]) (Message, error) {
 	return Message{
 		Key: []byte(i.Key),
 		Val: []byte(strconv.Itoa(i.Val)),
