@@ -19,7 +19,7 @@ type runnableNode interface {
 
 type sourceNode[K any, V any] struct {
 	source Source
-	d      Deserializer[K, V]
+	d      Unmarshaler[K, V]
 	child  topologyNode
 }
 
@@ -47,7 +47,7 @@ func (s *sourceNode[K, V]) do(ctx context.Context, a any) error {
 
 type sinkNode[K any, V any] struct {
 	sink Sink
-	s    Serializer[K, V]
+	s    Marshaler[K, V]
 }
 
 func (s *sinkNode[K, V]) setNext(n topologyNode) {

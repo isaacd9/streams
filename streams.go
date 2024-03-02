@@ -27,17 +27,17 @@ type Pipe interface {
 	Sink
 }
 
-type Deserializer[K, V any] interface {
+type Unmarshaler[K, V any] interface {
 	Read(ctx context.Context, msg Message) (Record[K, V], error)
 }
 
-type Serializer[K, V any] interface {
+type Marshaler[K, V any] interface {
 	Write(ctx context.Context, t Record[K, V]) (Message, error)
 }
 
-type SerDe[K, V any] interface {
-	Deserializer[K, V]
-	Serializer[K, V]
+type MarshalerUnmarshaler[K, V any] interface {
+	Unmarshaler[K, V]
+	Marshaler[K, V]
 }
 
 type Stream[K, V any] struct {
@@ -46,7 +46,7 @@ type Stream[K, V any] struct {
 	sinkNode *sinkNode[K, V]
 }
 
-func NewStream[K, V any](e *Executor, from Source, d Deserializer[K, V]) *Stream[K, V] {
+func NewStream[K, V any](e *Executor, from Source, d Unmarshaler[K, V]) *Stream[K, V] {
 	node := &sourceNode[K, V]{
 		source: from,
 		d:      d,
@@ -63,10 +63,10 @@ func NewStream[K, V any](e *Executor, from Source, d Deserializer[K, V]) *Stream
 	return st
 }
 
-func To[K, V any](s *Stream[K, V], serializer Serializer[K, V], sink Sink) {
+func To[K, V any](s *Stream[K, V], Marshaler Marshaler[K, V], sink Sink) {
 	node := &sinkNode[K, V]{
 		sink: sink,
-		s:    serializer,
+		s:    Marshaler,
 	}
 
 	s.sinkNode = node
@@ -89,7 +89,7 @@ func Process[KIn, VIn, KOut, VOut any](s *Stream[KIn, VIn], p Processor[KIn, VIn
 	}
 }
 
-func Through[K, V any](s *Stream[K, V], p Pipe, serde SerDe[K, V]) *Stream[K, V] {
+func Through[K, V any](s *Stream[K, V], p Pipe, serde MarshalerUnmarshaler[K, V]) *Stream[K, V] {
 	node := &pipedNode[K, V]{
 		sink: &sinkNode[K, V]{
 			sink: p,

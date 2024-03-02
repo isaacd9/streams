@@ -59,11 +59,11 @@ func TestWordLen(t *testing.T) {
 	})
 
 	var e Executor
-	a := NewStream(&e, r, StringDeserializer())
+	a := NewStream(&e, r, StringUnmarshaler())
 	b := Process(a, rr)
 	c := Process(b, fm)
 	d := Process(c, m)
-	To(d, IntSerializer(), &TestWriter{})
+	To(d, IntMarshaler(), &TestWriter{})
 
 	e.Execute(context.Background())
 }
@@ -93,12 +93,12 @@ func TestWordCount(t *testing.T) {
 	})
 
 	var e Executor
-	a := NewStream(&e, r, StringDeserializer())
+	a := NewStream(&e, r, StringUnmarshaler())
 	b := Process(a, rr)
 	c := Process(b, fm)
 	// e := GrouBy(c, g)
-	d := Through(c, NewNoopPipe(), StringSerde())
-	To(d, StringSerializer(), &TestWriter{})
+	d := Through(c, NewNoopPipe(), StringMarshalerUnmarshaler())
+	To(d, StringMarshaler(), &TestWriter{})
 
 	e.Execute(context.Background())
 }
