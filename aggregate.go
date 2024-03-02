@@ -27,6 +27,7 @@ func (a *AggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[K, Out]
 	return Record[K, Out]{
 		Key:   msg.Key,
 		Value: new,
+		Time:  msg.Time,
 	}, nil
 }
 
