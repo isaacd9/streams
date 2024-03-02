@@ -4,12 +4,22 @@ import (
 	"context"
 )
 
+type Message struct {
+	Key []byte
+	Val []byte
+}
+
 type Source interface {
-	Read(ctx context.Context) ([]byte, error)
+	Read(ctx context.Context) (Message, error)
 }
 
 type Sink interface {
-	Write(ctx context.Context, msg []byte) error
+	Write(ctx context.Context, msg Message) error
+}
+
+type Record[K, V any] struct {
+	Key K
+	Val V
 }
 
 type Pipe interface {
@@ -17,32 +27,32 @@ type Pipe interface {
 	Sink
 }
 
-type Deserializer[T any] interface {
-	Read(ctx context.Context, msg []byte) (T, error)
+type Deserializer[K, V any] interface {
+	Read(ctx context.Context, msg Message) (Record[K, V], error)
 }
 
-type Serializer[T any] interface {
-	Write(ctx context.Context, t T) ([]byte, error)
+type Serializer[K, V any] interface {
+	Write(ctx context.Context, t Record[K, V]) (Message, error)
 }
 
-type SerDe[T any] interface {
-	Deserializer[T]
-	Serializer[T]
+type SerDe[K, V any] interface {
+	Deserializer[K, V]
+	Serializer[K, V]
 }
 
-type Stream[T any] struct {
+type Stream[K, V any] struct {
 	e        *Executor
 	node     topologyNode
-	sinkNode *sinkNode[T]
+	sinkNode *sinkNode[K, V]
 }
 
-func NewStream[T any](e *Executor, from Source, d Deserializer[T]) *Stream[T] {
-	node := &sourceNode[T]{
+func NewStream[K, V any](e *Executor, from Source, d Deserializer[K, V]) *Stream[K, V] {
+	node := &sourceNode[K, V]{
 		source: from,
 		d:      d,
 	}
 
-	st := &Stream[T]{
+	st := &Stream[K, V]{
 		node: node,
 		e:    e,
 	}
@@ -53,8 +63,8 @@ func NewStream[T any](e *Executor, from Source, d Deserializer[T]) *Stream[T] {
 	return st
 }
 
-func To[T any](s *Stream[T], serializer Serializer[T], sink Sink) {
-	node := &sinkNode[T]{
+func To[K, V any](s *Stream[K, V], serializer Serializer[K, V], sink Sink) {
+	node := &sinkNode[K, V]{
 		sink: sink,
 		s:    serializer,
 	}
@@ -65,31 +75,31 @@ func To[T any](s *Stream[T], serializer Serializer[T], sink Sink) {
 	s.e.last = node
 }
 
-func Process[In any, Out any](s *Stream[In], p Processor[In, Out]) *Stream[Out] {
-	node := &processorNode[In, Out]{
+func Process[KIn, VIn, KOut, VOut any](s *Stream[KIn, VIn], p Processor[KIn, VIn, KOut, VOut]) *Stream[KOut, VOut] {
+	node := &processorNode[KIn, VIn, KOut, VOut]{
 		p: p,
 	}
 
 	s.e.last.setNext(node)
 	s.e.last = node
 
-	return &Stream[Out]{
+	return &Stream[KOut, VOut]{
 		e:    s.e,
 		node: node,
 	}
 }
 
-func Through[T any](s *Stream[T], p Pipe, serde SerDe[T]) *Stream[T] {
-	sink := &sinkNode[T]{
+func Through[K, V any](s *Stream[K, V], p Pipe, serde SerDe[K, V]) *Stream[K, V] {
+	sink := &sinkNode[K, V]{
 		sink: p,
 		s:    serde,
 	}
-	source := &sourceNode[T]{
+	source := &sourceNode[K, V]{
 		source: p,
 		d:      serde,
 	}
 
-	node := &pipedNode[T]{
+	node := &pipedNode[K, V]{
 		sink:   sink,
 		source: source,
 	}
@@ -97,7 +107,7 @@ func Through[T any](s *Stream[T], p Pipe, serde SerDe[T]) *Stream[T] {
 	s.e.last.setNext(node)
 	s.e.last = node
 
-	return &Stream[T]{
+	return &Stream[K, V]{
 		e:    s.e,
 		node: node,
 	}

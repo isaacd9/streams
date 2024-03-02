@@ -5,32 +5,41 @@ import (
 	"strconv"
 )
 
-func StringDeserializer[T string]() Deserializer[string] {
-	return &stringDeserializer[string]{}
+func StringDeserializer() Deserializer[string, string] {
+	return &stringDeserializer{}
 }
 
-type stringDeserializer[T string] struct{}
+type stringDeserializer struct{}
 
-func (s *stringDeserializer[T]) Read(ctx context.Context, msg []byte) (string, error) {
-	return string(msg), nil
+func (s *stringDeserializer) Read(ctx context.Context, msg Message) (Record[string, string], error) {
+	return Record[string, string]{
+		Key: string(msg.Key),
+		Val: string(msg.Val),
+	}, nil
 }
 
-func StringSerializer[T string]() Serializer[string] {
-	return &stringSerializer[string]{}
+func StringSerializer() Serializer[string, string] {
+	return &stringSerializer{}
 }
 
-type stringSerializer[T string] struct{}
+type stringSerializer struct{}
 
-func (s *stringSerializer[T]) Write(ctx context.Context, i string) ([]byte, error) {
-	return []byte(i), nil
+func (s *stringSerializer) Write(ctx context.Context, r Record[string, string]) (Message, error) {
+	return Message{
+		Key: []byte(r.Key),
+		Val: []byte(r.Val),
+	}, nil
 }
 
-func IntSerializer[T int]() Serializer[int] {
-	return &intSerializer[int]{}
+func IntSerializer() Serializer[string, int] {
+	return &intSerializer{}
 }
 
-type intSerializer[T int] struct{}
+type intSerializer struct{}
 
-func (s *intSerializer[T]) Write(ctx context.Context, i int) ([]byte, error) {
-	return []byte(strconv.Itoa(i)), nil
+func (s *intSerializer) Write(ctx context.Context, i Record[string, int]) (Message, error) {
+	return Message{
+		Key: []byte(i.Key),
+		Val: []byte(strconv.Itoa(i.Val)),
+	}, nil
 }

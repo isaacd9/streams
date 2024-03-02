@@ -2,53 +2,52 @@ package streams
 
 import "context"
 
-type Processor[In any, Out any] interface {
-	ProcessMessage(ctx context.Context, msg In, next func(o Out) error) error
+type Processor[KIn, VIn, KOut, VOut any] interface {
+	ProcessMessage(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error
 }
 
-type FilteredProcessor[T any] struct {
-	fn func(T) bool
+type FilteredProcessor[K, V any] struct {
+	fn func(Record[K, V]) bool
 }
 
-func NewFilteredProcessor[T any](fn func(T) bool) Processor[T, T] {
-	return &FilteredProcessor[T]{
+func NewFilteredProcessor[K, V any](fn func(Record[K, V]) bool) Processor[K, V, K, V] {
+	return &FilteredProcessor[K, V]{
 		fn: fn,
 	}
 }
 
-func (m *FilteredProcessor[T]) ProcessMessage(ctx context.Context, msg T, next func(T) error) error {
+func (m *FilteredProcessor[K, V]) ProcessMessage(ctx context.Context, msg Record[K, V], next func(Record[K, V]) error) error {
 	if m.fn(msg) {
 		return next(msg)
 	}
 	return nil
 }
 
-type MappedProcessor[In any, Out any] struct {
-	fn func(In) Out
+type MappedProcessor[KIn, VIn, KOut, VOut any] struct {
+	fn func(Record[KIn, VIn]) Record[KOut, VOut]
 }
 
-func NewMappedProcessor[In any, Out any](fn func(In) Out) Processor[In, Out] {
-	return &MappedProcessor[In, Out]{
+func NewMappedProcessor[KIn, VIn, KOut, VOut any](fn func(Record[KIn, VIn]) Record[KOut, VOut]) Processor[KIn, VIn, KOut, VOut] {
+	return &MappedProcessor[KIn, VIn, KOut, VOut]{
 		fn: fn,
 	}
 }
 
-func (m *MappedProcessor[In, Out]) ProcessMessage(ctx context.Context, msg In, next func(o Out) error) error {
-	o := m.fn(msg)
-	return next(o)
+func (m *MappedProcessor[KIn, VIn, KOut, VOut]) ProcessMessage(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error {
+	return next(m.fn(msg))
 }
 
-type FlatMapProcessor[In any, Out any] struct {
-	fn func(In) []Out
+type FlatMapProcessor[KIn, VIn, KOut, VOut any] struct {
+	fn func(Record[KIn, VIn]) []Record[KOut, VOut]
 }
 
-func NewFlatMapProcessor[In any, Out any](fn func(In) []Out) Processor[In, Out] {
-	return &FlatMapProcessor[In, Out]{
+func NewFlatMapProcessor[KIn, VIn, KOut, VOut any](fn func(Record[KIn, VIn]) []Record[KOut, VOut]) Processor[KIn, VIn, KOut, VOut] {
+	return &FlatMapProcessor[KIn, VIn, KOut, VOut]{
 		fn: fn,
 	}
 }
 
-func (m *FlatMapProcessor[In, Out]) ProcessMessage(ctx context.Context, msg In, next func(msg Out) error) error {
+func (m *FlatMapProcessor[KIn, VIn, KOut, VOut]) ProcessMessage(ctx context.Context, msg Record[KIn, VIn], next func(msg Record[KOut, VOut]) error) error {
 	outs := m.fn(msg)
 	for _, out := range outs {
 		if err := next(out); err != nil {

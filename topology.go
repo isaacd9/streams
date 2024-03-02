@@ -12,17 +12,17 @@ type topologyNode interface {
 	do(ctx context.Context, a any) (e error)
 }
 
-type sourceNode[T any] struct {
+type sourceNode[K any, V any] struct {
 	source Source
-	d      Deserializer[T]
+	d      Deserializer[K, V]
 	child  topologyNode
 }
 
-func (s *sourceNode[T]) setNext(n topologyNode) {
+func (s *sourceNode[K, V]) setNext(n topologyNode) {
 	s.child = n
 }
 
-func (s *sourceNode[T]) do(ctx context.Context, a any) error {
+func (s *sourceNode[K, V]) do(ctx context.Context, a any) error {
 	for {
 		msg, err := s.source.Read(ctx)
 		if err != nil {
@@ -40,17 +40,17 @@ func (s *sourceNode[T]) do(ctx context.Context, a any) error {
 	}
 }
 
-type sinkNode[T any] struct {
+type sinkNode[K any, V any] struct {
 	sink Sink
-	s    Serializer[T]
+	s    Serializer[K, V]
 }
 
-func (s *sinkNode[T]) setNext(n topologyNode) {
+func (s *sinkNode[K, V]) setNext(n topologyNode) {
 	panic("sink node cannot have a next node")
 }
 
-func (s *sinkNode[T]) do(ctx context.Context, a any) error {
-	t, ok := a.(T)
+func (s *sinkNode[K, V]) do(ctx context.Context, a any) error {
+	t, ok := a.(Record[K, V])
 	if !ok {
 		return fmt.Errorf("expected type %T, got %T", t, a)
 	}
@@ -63,36 +63,36 @@ func (s *sinkNode[T]) do(ctx context.Context, a any) error {
 	return s.sink.Write(ctx, msg)
 }
 
-type processorNode[In any, Out any] struct {
-	p   Processor[In, Out]
+type processorNode[KIn any, VIn any, KOut any, VOut any] struct {
+	p   Processor[KIn, VIn, KOut, VOut]
 	out topologyNode
 }
 
-func (s *processorNode[In, Out]) setNext(n topologyNode) {
+func (s *processorNode[KIn, VIn, KOut, VOut]) setNext(n topologyNode) {
 	s.out = n
 }
 
-func (s *processorNode[In, Out]) do(ctx context.Context, a any) error {
-	in, ok := a.(In)
+func (s *processorNode[KIn, VIn, KOut, VOut]) do(ctx context.Context, a any) error {
+	in, ok := a.(Record[KIn, VIn])
 	if !ok {
 		return fmt.Errorf("expected type %T, got %T", in, a)
 	}
 
-	return s.p.ProcessMessage(ctx, in, func(o Out) error {
+	return s.p.ProcessMessage(ctx, in, func(o Record[KOut, VOut]) error {
 		return s.out.do(ctx, o)
 	})
 }
 
-type pipedNode[T any] struct {
+type pipedNode[K any, V any] struct {
 	sink   topologyNode
 	source topologyNode
 }
 
-func (s *pipedNode[T]) setNext(n topologyNode) {
+func (s *pipedNode[K, V]) setNext(n topologyNode) {
 	s.source = n
 }
 
-func (s *pipedNode[T]) do(ctx context.Context, a any) error {
+func (s *pipedNode[K, V]) do(ctx context.Context, a any) error {
 	if err := s.sink.do(ctx, a); err != nil {
 		return err
 	}
