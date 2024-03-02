@@ -30,6 +30,12 @@ func (m *TestWriter) Write(ctx context.Context, msg Message) error {
 	return nil
 }
 
+type NullWriter struct{}
+
+func (m *NullWriter) Write(ctx context.Context, msg Message) error {
+	return nil
+}
+
 func TestWordLen(t *testing.T) {
 	r := &TestReader{st: []string{
 		"the quick BROWN",
@@ -174,4 +180,43 @@ func TestReducer(t *testing.T) {
 
 	Pipe(MarshalAny(sum), &TestWriter{})
 	// log.Printf("state: %v", state)
+}
+
+func TestJoin(t *testing.T) {
+	r := &TestReader{st: []string{
+		"the quick BROWN",
+		"fox JUMPS over",
+		"the lazy lazy dog",
+	}}
+
+	state := NewMapState[string, int]()
+	split := FlatMapValues(UnmarshalString(r), func(s string) []string {
+		return strings.Split(s, " ")
+	})
+	rekey := Map(split, func(r KeyValue[string, string]) KeyValue[string, string] {
+		return KeyValue[string, string]{
+			Key: strings.ToLower(r.Value),
+		}
+	})
+	ag := Aggregate(rekey, state, func(r Record[string, string], s int) int {
+		return len(r.Key)
+	})
+
+	Pipe(MarshalAny(ag), &NullWriter{})
+
+	r2 := &TestReader{st: []string{
+		"the", "the", "the",
+		"brown", "brown", "brown",
+	}}
+
+	rekeyr2 := Map(UnmarshalString(r2), func(r KeyValue[string, string]) KeyValue[string, string] {
+		return KeyValue[string, string]{
+			Key:   strings.ToLower(r.Value),
+			Value: strings.ToLower(r.Value),
+		}
+	})
+	joined := JoinTable(rekeyr2, ag, func(r Record[string, string], i int) string {
+		return r.Value + ":" + strconv.Itoa(i)
+	})
+	Pipe(MarshalAny(joined), &TestWriter{})
 }

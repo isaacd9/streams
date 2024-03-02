@@ -1,6 +1,8 @@
 package streams
 
-import "context"
+import (
+	"context"
+)
 
 type TableReader[K comparable, V any] interface {
 	Reader[K, V]
@@ -16,12 +18,12 @@ type joinReader[K comparable, V, VJoin, VOut any] struct {
 func (j *joinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[K, VOut], error) {
 	msg, err := j.r.Read(ctx)
 	if err != nil {
-		return Record[K, VOut]{}, nil
+		return Record[K, VOut]{}, err
 	}
 
 	join, err := j.t.get(msg.Key)
 	if err != nil {
-		return Record[K, VOut]{}, nil
+		return Record[K, VOut]{}, err
 	}
 
 	out := j.joiner(msg, join)
@@ -33,7 +35,7 @@ func (j *joinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[K, VOu
 	}, nil
 }
 
-func Join[K comparable, V, VJoin, VOut any](r Reader[K, V], t TableReader[K, VJoin], joiner func(Record[K, V], VJoin) VOut) Reader[K, VOut] {
+func JoinTable[K comparable, V, VJoin, VOut any](r Reader[K, V], t TableReader[K, VJoin], joiner func(Record[K, V], VJoin) VOut) Reader[K, VOut] {
 	return &joinReader[K, V, VJoin, VOut]{
 		r:      r,
 		t:      t,
