@@ -89,6 +89,16 @@ func TestInProcessWordCount(t *testing.T) {
 
 func TestThroughWordCount(t *testing.T) {
 	intermediate := NewNoopPipe()
+	go func() {
+		um := Map(intermediate, func(r Message) Record[string, string] {
+			return Record[string, string]{
+				Key:   string(r.Key),
+				Value: string(r.Value),
+			}
+		})
+		count := Count(um, NewMapState[string, uint64]())
+		Pipe(MarshalAny(count), &TestWriter{})
+	}()
 
 	r := &TestReader{st: []string{
 		"the quick BROWN",
@@ -103,20 +113,13 @@ func TestThroughWordCount(t *testing.T) {
 			Key: strings.ToLower(r.Value),
 		}
 	})
+	n, err := Pipe(MarshalAny(rekey), intermediate)
+	if err != nil {
+		t.Errorf("error: %v", err)
+	}
+	intermediate.Close()
+	// log.Printf("processed %d records", n)
 
-	go func() {
-		Pipe(MarshalAny(rekey), intermediate)
-		intermediate.Close()
-	}()
-
-	um := Map(intermediate, func(r Message) Record[string, string] {
-		return Record[string, string]{
-			Key:   string(r.Key),
-			Value: string(r.Value),
-		}
-	})
-	count := Count(um, NewMapState[string, uint64]())
-	Pipe(MarshalAny(count), &TestWriter{})
 }
 
 /*
