@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -153,50 +154,45 @@ func TestWindowedWordCount(t *testing.T) {
 	})
 
 	counted := Count(windowed, state)
-
 	Pipe(MarshalAny(counted), &TestWriter{})
 }
 
-/*
 func TestReducer(t *testing.T) {
 	r := &TestReader{st: []string{
 		"1, 2, 3",
 		"10, 20, 30",
 	}}
 
-	ex := NewExecutor()
-	s := NewStream(ex, r, StringUnmarshaler())
-	s = Process(s, FlatMapValues[string](func(s string) []string {
+	split := FlatMapValues(UnmarshalString(r), func(s string) []string {
 		return strings.Split(s, ", ")
-	}))
-	ss := Process(s, MapValues[string](func(s string) int {
-		i, err := strconv.Atoi(s)
+	})
+
+	parse := MapValues(split, func(s string) int {
+		n, err := strconv.Atoi(s)
 		if err != nil {
 			panic(err)
 		}
-		return i
-	}))
+		return n
+	})
 
-	sss := Process(ss, Map(func(r Record[string, int]) Record[string, int] {
+	repartition := Map(parse, func(r Record[string, int]) Record[string, int] {
 		var k string
-		if r.Val < 10 {
+		if r.Value < 10 {
 			k = "small"
 		} else {
 			k = "big"
 		}
-
 		return Record[string, int]{
-			Key: k,
-			Value: r.Val,
+			Key:   k,
+			Value: r.Value,
 		}
-	}))
+	})
 
-	agg := Aggregate(sss, NewReducer(NewMapState[string, int](), func(k string, a, b int) int {
+	state := NewMapState[string, int]()
+	sum := Reduce(repartition, state, func(a int, b int) int {
 		return a + b
-	}))
+	})
 
-	To(ToStream(agg), AnyMarshaler[string, int](), &TestWriter{})
-	ex.Execute(context.Background())
+	Pipe(MarshalAny(sum), &TestWriter{})
+	// log.Printf("state: %v", state)
 }
-
-*/

@@ -44,8 +44,8 @@ func Count[K comparable, In any](r Reader[K, In], state State[K, uint64]) Reader
 	})
 }
 
-func NewReducer[K comparable, V any](r Reader[K, V], state State[K, V], reducer func(k K, a, b V) V) Reader[K, V] {
+func Reduce[K comparable, V any](r Reader[K, V], state State[K, V], reducer func(a, b V) V) Reader[K, V] {
 	return Aggregate(r, state, func(r Record[K, V], v V) V {
-		return reducer(r.Key, v, r.Value)
+		return reducer(v, r.Value)
 	})
 }
