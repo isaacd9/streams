@@ -82,3 +82,40 @@ func (s *processorNode[In, Out]) do(ctx context.Context, a any) error {
 		return s.out.do(ctx, o)
 	})
 }
+
+type pipedNode[T any] struct {
+	sink   topologyNode
+	source topologyNode
+}
+
+func (s *pipedNode[T]) setNext(n topologyNode) {
+	s.source = n
+}
+
+func (s *pipedNode[T]) do(ctx context.Context, a any) error {
+	if err := s.sink.do(ctx, a); err != nil {
+		return err
+	}
+
+	if err := s.source.do(ctx, a); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+/*
+type groupedNode[In any, Key comparable] struct {
+	fn  func(In) Key
+	out topologyNode
+}
+
+func (s *groupedNode[In, Key]) setNext(n topologyNode) {
+	s.out = n
+}
+
+func (s *groupedNode[In, Key]) do(ctx context.Context, a any) error {
+	key := g.fn(msg)
+	return s.do(ctx, key, msg)
+}
+*/

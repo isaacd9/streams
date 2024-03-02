@@ -12,12 +12,22 @@ type Sink interface {
 	Write(ctx context.Context, msg []byte) error
 }
 
+type Pipe interface {
+	Source
+	Sink
+}
+
 type Deserializer[T any] interface {
 	Read(ctx context.Context, msg []byte) (T, error)
 }
 
 type Serializer[T any] interface {
 	Write(ctx context.Context, t T) ([]byte, error)
+}
+
+type SerDe[T any] interface {
+	Deserializer[T]
+	Serializer[T]
 }
 
 type Stream[T any] struct {
@@ -55,7 +65,7 @@ func To[T any](s *Stream[T], serializer Serializer[T], sink Sink) {
 	s.e.last = node
 }
 
-func Through[In any, Out any](s *Stream[In], p Processor[In, Out]) *Stream[Out] {
+func Process[In any, Out any](s *Stream[In], p Processor[In, Out]) *Stream[Out] {
 	node := &processorNode[In, Out]{
 		p: p,
 	}
@@ -69,87 +79,50 @@ func Through[In any, Out any](s *Stream[In], p Processor[In, Out]) *Stream[Out] 
 	}
 }
 
-type Processor[In any, Out any] interface {
-	ProcessMessage(ctx context.Context, msg In, next func(o Out) error) error
-}
-
-type FilteredProcessor[T any] struct {
-	fn func(T) bool
-}
-
-func NewFilteredProcessor[T any](fn func(T) bool) Processor[T, T] {
-	return &FilteredProcessor[T]{
-		fn: fn,
+func Through[T any](s *Stream[T], p Pipe, serde SerDe[T]) *Stream[T] {
+	sink := &sinkNode[T]{
+		sink: p,
+		s:    serde,
 	}
-}
-
-func (m *FilteredProcessor[T]) ProcessMessage(ctx context.Context, msg T, next func(T) error) error {
-	if m.fn(msg) {
-		return next(msg)
+	source := &sourceNode[T]{
+		source: p,
+		d:      serde,
 	}
-	return nil
-}
 
-type MappedProcessor[In any, Out any] struct {
-	fn func(In) Out
-}
-
-func NewMappedProcessor[In any, Out any](fn func(In) Out) Processor[In, Out] {
-	return &MappedProcessor[In, Out]{
-		fn: fn,
+	node := &pipedNode[T]{
+		sink:   sink,
+		source: source,
 	}
-}
 
-func (m *MappedProcessor[In, Out]) ProcessMessage(ctx context.Context, msg In, next func(o Out) error) error {
-	o := m.fn(msg)
-	return next(o)
-}
+	s.e.last.setNext(node)
+	s.e.last = node
 
-type FlatMapProcessor[In any, Out any] struct {
-	fn func(In) []Out
-}
-
-func NewFlatMapProcessor[In any, Out any](fn func(In) []Out) Processor[In, Out] {
-	return &FlatMapProcessor[In, Out]{
-		fn: fn,
+	return &Stream[T]{
+		e:    s.e,
+		node: node,
 	}
-}
-
-func (m *FlatMapProcessor[In, Out]) ProcessMessage(ctx context.Context, msg In, next func(msg Out) error) error {
-	outs := m.fn(msg)
-	for _, out := range outs {
-		if err := next(out); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 /*
-type GroupBy[In any, Key comparable] struct {
-	inner Processor[In]
-	fn    func(In) Key
+type GroupedStream[In any, Key comparable] struct {
+	fn   func(In) Key
+	node topologyNode
 }
 
-func NewGroupBy[In any, Key comparable](r Processor[In], fn func(In) Key) *GroupBy[In, Key] {
-	return &GroupBy[In, Key]{
-		inner: r,
-		fn:    fn,
+func GroupBy[In any, Key comparable](s *Stream[In], fn func(In) Key) *GroupedStream[In, Key] {
+	node := &groupedNode[In, Key]{
+		fn: fn,
+	}
+
+	s.e.last.setNext(node)
+	s.e.last = node
+
+	return &GroupedStream[In, Key]{
+		fn:   fn,
+		node: node,
 	}
 }
 
-func (g *GroupBy[In, Key]) ProcessMessage(ctx context.Context) (Key, In, error) {
-	msg, err := g.inner.ProcessMessage(ctx)
-	if err != nil {
-		var (
-			i In
-			k Key
-		)
-		return k, i, err
-	}
-
-	return g.fn(msg), msg, nil
-}
 
 type Aggregation[K comparable, In any, Out any] struct {
 	g    *GroupBy[In, K]

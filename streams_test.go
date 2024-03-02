@@ -34,22 +34,45 @@ func TestWordLen(t *testing.T) {
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
+	rr := NewMappedProcessor(func(s string) string {
+		return strings.ToLower(s)
+	})
+	fm := NewFlatMapProcessor(func(s string) []string {
+		return strings.Split(s, " ")
+	})
+	m := NewMappedProcessor(func(s string) int {
+		return len(s)
+	})
+
+	var e Executor
+	a := NewStream(&e, r, StringDeserializer())
+	b := Process(a, rr)
+	c := Process(b, fm)
+	d := Process(c, m)
+	To(d, IntSerializer(), &TestWriter{})
+
+	e.Execute(context.Background())
+}
+
+func TestWordCount(t *testing.T) {
+	r := &TestReader{st: []string{
+		"the quick BROWN",
+		"fox JUMPS over",
+		"the lazy lazy dog",
+	}}
 	rr := NewMappedProcessor[string, string](func(s string) string {
 		return strings.ToLower(s)
 	})
 	fm := NewFlatMapProcessor[string, string](func(s string) []string {
 		return strings.Split(s, " ")
 	})
-	m := NewMappedProcessor[string, int](func(s string) int {
-		return len(s)
-	})
 
 	var e Executor
 	a := NewStream(&e, r, StringDeserializer())
-	b := Through(a, rr)
-	c := Through(b, fm)
-	d := Through(c, m)
-	To(d, IntSerializer(), &TestWriter{})
+	b := Process(a, rr)
+	c := Process(b, fm)
+	// e := GrouBy(c, g)
+	To(c, StringSerializer(), &TestWriter{})
 
 	e.Execute(context.Background())
 }
