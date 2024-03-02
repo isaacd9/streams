@@ -90,17 +90,17 @@ func (m *FilteredProcessor[T]) ProcessMessage(ctx context.Context, msg T, next f
 	return nil
 }
 
-type MappedReeader[In any, Out any] struct {
+type MappedProcessor[In any, Out any] struct {
 	fn func(In) Out
 }
 
 func NewMappedProcessor[In any, Out any](fn func(In) Out) Processor[In, Out] {
-	return &MappedReeader[In, Out]{
+	return &MappedProcessor[In, Out]{
 		fn: fn,
 	}
 }
 
-func (m *MappedReeader[In, Out]) ProcessMessage(ctx context.Context, msg In, next func(o Out) error) error {
+func (m *MappedProcessor[In, Out]) ProcessMessage(ctx context.Context, msg In, next func(o Out) error) error {
 	o := m.fn(msg)
 	return next(o)
 }
