@@ -12,6 +12,11 @@ type topologyNode interface {
 	do(ctx context.Context, a any) (e error)
 }
 
+type runnableNode interface {
+	topologyNode
+	run(ctx context.Context) error
+}
+
 type sourceNode[K any, V any] struct {
 	source Source
 	d      Deserializer[K, V]

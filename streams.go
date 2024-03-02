@@ -101,14 +101,10 @@ func Through[K, V any](s *Stream[K, V], p Pipe, serde SerDe[K, V]) *Stream[K, V]
 		},
 	}
 
-	// Todo: We should register the nodes that need to run concurrently and
-	// run them in the executor
-	go func() {
-		node.run(context.Background())
-	}()
-
 	s.e.last.setNext(node)
 	s.e.last = node
+
+	s.e.runnables = append(s.e.runnables, node)
 
 	return &Stream[K, V]{
 		e:    s.e,
