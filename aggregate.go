@@ -62,7 +62,14 @@ func (a *Aggregation[K, VIn, VOut]) Aggregate(ctx context.Context, r Record[K, V
 }
 
 func NewCount[K comparable, In any](state State[K, uint64]) Aggregator[K, In, uint64] {
-	return NewAggregation[K, In, uint64](state, func(r Record[K, In], u uint64) uint64 {
+	return NewAggregation(state, func(r Record[K, In], u uint64) uint64 {
 		return u + 1
+	})
+}
+
+func NewReducer[K comparable, V any](state State[K, V], reducer func(k K, a, b V)) Aggregator[K, V, V] {
+	return NewAggregation(state, func(r Record[K, V], v V) V {
+		reducer(r.Key, v, r.Val)
+		return v
 	})
 }

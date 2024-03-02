@@ -153,17 +153,6 @@ func NewReducer[K comparable, V any](g *GroupBy[V, K], init V, reducer func(a, b
 	}
 }
 
-func NewCount[K comparable, In any](g *GroupBy[In, K]) KeyedProcessor[K, uint64] {
-	return &Aggregation[K, In, uint64]{
-		g:    g,
-		init: 0,
-		agg: func(k K, i In, u uint64) uint64 {
-			return u + 1
-		},
-		state: make(map[K]uint64),
-	}
-}
-
 type TimeWindowCfg struct {
 	Size    time.Duration
 	Advance time.Duration
