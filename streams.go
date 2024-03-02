@@ -141,61 +141,6 @@ func Aggregate[K comparable, VIn any, VOut any](s *Stream[K, VIn], agg Aggregato
 }
 
 /*
-type GroupedStream[In any, Key comparable] struct {
-	fn   func(In) Key
-	node topologyNode
-}
-
-func GroupBy[In any, Key comparable](s *Stream[In], fn func(In) Key) *GroupedStream[In, Key] {
-	node := &groupedNode[In, Key]{
-		fn: fn,
-	}
-
-	s.e.last.setNext(node)
-	s.e.last = node
-
-	return &GroupedStream[In, Key]{
-		fn:   fn,
-		node: node,
-	}
-}
-
-
-type Aggregation[K comparable, In any, Out any] struct {
-	g    *GroupBy[In, K]
-	init Out
-	agg  func(K, In, Out) Out
-
-	// TODO: Replace this with an interface!
-	state map[K]Out
-}
-
-func NewAggregation[K comparable, In any, Out any](g *GroupBy[In, K], init Out, agg func(K, In, Out) Out) KeyedProcessor[K, Out] {
-	return &Aggregation[K, In, Out]{
-		g:     g,
-		init:  init,
-		agg:   agg,
-		state: make(map[K]Out),
-	}
-}
-
-func (a *Aggregation[K, In, Out]) ProcessMessage(ctx context.Context) (K, Out, error) {
-	key, msg, err := a.g.ProcessMessage(ctx)
-	if err != nil {
-		var (
-			k K
-			o Out
-		)
-		return k, o, err
-	}
-
-	if _, ok := a.state[key]; !ok {
-		a.state[key] = a.init
-	}
-	a.state[key] = a.agg(key, msg, a.state[key])
-	return key, a.state[key], nil
-}
-
 func NewReducer[K comparable, V any](g *GroupBy[V, K], init V, reducer func(a, b V) V) KeyedProcessor[K, V] {
 	var v V
 	return &Aggregation[K, V, V]{
