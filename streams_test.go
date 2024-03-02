@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 	"testing"
+	"time"
 )
 
 type TestReader struct {
@@ -119,40 +120,44 @@ func TestThroughWordCount(t *testing.T) {
 
 }
 
-/*
 func TestWindowedWordCount(t *testing.T) {
-	r := &TestReader{st: []string{
-		"the quick BROWN",
-		"fox JUMPS over",
-		"the lazy lazy dog",
-	}}
-	fm := FlatMapValues[string](func(s string) []string {
-		return strings.Split(s, " ")
-	})
-	makeKeys := Map[string, string, string, string](func(r Record[string, string]) Record[string, string] {
-		return Record[string, string]{Key: strings.ToLower(r.Val)}
-	})
+	intermediate := NewNoopPipe()
 
-	pipe := NewNoopPipe()
+	go func() {
+		r := &TestReader{st: []string{
+			"the quick BROWN",
+			"fox JUMPS over",
+			"the lazy lazy dog",
+		}}
+		split := FlatMapValues(UnmarshalString(r), func(s string) []string {
+			return strings.Split(s, " ")
+		})
+		rekey := Map(split, func(r Record[string, string]) Record[string, string] {
+			return Record[string, string]{
+				Key: strings.ToLower(r.Value),
+			}
+		})
+		_, err := Pipe(MarshalAny(rekey), intermediate)
+		if err != nil {
+			t.Errorf("error: %v", err)
+		}
 
-	ex := NewExecutor()
+		_ = intermediate.Close()
+	}()
 
-	counter := NewCount[WindowKey[string], string](NewMapState[WindowKey[string], uint64]())
+	state := NewMapState[WindowKey[string], uint64]()
 
-	s := NewStream(ex, r, StringUnmarshaler())
-	s = Process(s, fm)
-	s = Process(s, makeKeys)
-	s = Through(s, pipe, StringMarshalerUnmarshaler())
-	w := Window(s, NewRealTimeWindow[string, string](TimeWindows{
-		Size:    1 * time.Minute,
+	windowed := RealTimeWindow(UnmarshalString(intermediate), TimeWindows{
+		Size:    2 * time.Minute,
 		Advance: 1 * time.Minute,
-	}))
-	aa := Aggregate(w, counter)
-	To(ToStream(aa), AnyMarshaler[WindowKey[string], uint64](), &TestWriter{})
+	})
 
-	ex.Execute(context.Background())
+	counted := Count(windowed, state)
+
+	Pipe(MarshalAny(counted), &TestWriter{})
 }
 
+/*
 func TestReducer(t *testing.T) {
 	r := &TestReader{st: []string{
 		"1, 2, 3",
