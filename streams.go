@@ -43,7 +43,7 @@ func NewStream[T any](e *Executor, from Source, d Deserializer[T]) *Stream[T] {
 	return st
 }
 
-func (s *Stream[T]) To(serializer Serializer[T], sink Sink) {
+func To[T any](s *Stream[T], serializer Serializer[T], sink Sink) {
 	node := &sinkNode[T]{
 		sink: sink,
 		s:    serializer,

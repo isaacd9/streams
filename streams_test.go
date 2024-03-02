@@ -49,7 +49,7 @@ func TestWordCount(t *testing.T) {
 	b := Through(a, rr)
 	c := Through(b, fm)
 	d := Through(c, m)
-	d.To(IntSerializer(), &TestWriter{})
+	To(d, IntSerializer(), &TestWriter{})
 
 	e.Execute(context.Background())
 }
