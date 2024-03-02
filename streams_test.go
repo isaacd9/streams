@@ -34,13 +34,13 @@ func TestWordLen(t *testing.T) {
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
-	rr := NewMappedProcessor(func(s Record[string, string]) Record[string, string] {
+	rr := Map(func(s Record[string, string]) Record[string, string] {
 		return Record[string, string]{
 			Key: s.Key,
 			Val: strings.ToLower(s.Val),
 		}
 	})
-	fm := NewFlatMapProcessor(func(r Record[string, string]) []Record[string, string] {
+	fm := FlatMap(func(r Record[string, string]) []Record[string, string] {
 		sp := strings.Split(r.Val, " ")
 		var ret []Record[string, string]
 		for _, s := range sp {
@@ -51,7 +51,7 @@ func TestWordLen(t *testing.T) {
 		}
 		return ret
 	})
-	m := NewMappedProcessor(func(s Record[string, string]) Record[string, int] {
+	m := Map(func(s Record[string, string]) Record[string, int] {
 		return Record[string, int]{
 			Key: s.Key,
 			Val: len(s.Val),
@@ -74,13 +74,13 @@ func TestWordCount(t *testing.T) {
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
-	rr := NewMappedProcessor(func(s Record[string, string]) Record[string, string] {
+	rr := Map(func(s Record[string, string]) Record[string, string] {
 		return Record[string, string]{
 			Key: s.Key,
 			Val: strings.ToLower(s.Val),
 		}
 	})
-	fm := NewFlatMapProcessor(func(r Record[string, string]) []Record[string, string] {
+	fm := FlatMap(func(r Record[string, string]) []Record[string, string] {
 		sp := strings.Split(r.Val, " ")
 		var ret []Record[string, string]
 		for _, s := range sp {

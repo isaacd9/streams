@@ -6,53 +6,35 @@ type Processor[KIn, VIn, KOut, VOut any] interface {
 	ProcessMessage(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error
 }
 
-type FilteredProcessor[K, V any] struct {
-	fn func(Record[K, V]) bool
+type ProcessorFunc[KIn, VIn, KOut, VOut any] func(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error
+
+func (p ProcessorFunc[KIn, VIn, KOut, VOut]) ProcessMessage(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error {
+	return p(ctx, msg, next)
 }
 
-func NewFilteredProcessor[K, V any](fn func(Record[K, V]) bool) Processor[K, V, K, V] {
-	return &FilteredProcessor[K, V]{
-		fn: fn,
-	}
-}
-
-func (m *FilteredProcessor[K, V]) ProcessMessage(ctx context.Context, msg Record[K, V], next func(Record[K, V]) error) error {
-	if m.fn(msg) {
-		return next(msg)
-	}
-	return nil
-}
-
-type MappedProcessor[KIn, VIn, KOut, VOut any] struct {
-	fn func(Record[KIn, VIn]) Record[KOut, VOut]
-}
-
-func NewMappedProcessor[KIn, VIn, KOut, VOut any](fn func(Record[KIn, VIn]) Record[KOut, VOut]) Processor[KIn, VIn, KOut, VOut] {
-	return &MappedProcessor[KIn, VIn, KOut, VOut]{
-		fn: fn,
-	}
-}
-
-func (m *MappedProcessor[KIn, VIn, KOut, VOut]) ProcessMessage(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error {
-	return next(m.fn(msg))
-}
-
-type FlatMapProcessor[KIn, VIn, KOut, VOut any] struct {
-	fn func(Record[KIn, VIn]) []Record[KOut, VOut]
-}
-
-func NewFlatMapProcessor[KIn, VIn, KOut, VOut any](fn func(Record[KIn, VIn]) []Record[KOut, VOut]) Processor[KIn, VIn, KOut, VOut] {
-	return &FlatMapProcessor[KIn, VIn, KOut, VOut]{
-		fn: fn,
-	}
-}
-
-func (m *FlatMapProcessor[KIn, VIn, KOut, VOut]) ProcessMessage(ctx context.Context, msg Record[KIn, VIn], next func(msg Record[KOut, VOut]) error) error {
-	outs := m.fn(msg)
-	for _, out := range outs {
-		if err := next(out); err != nil {
-			return err
+func Filter[K, V any](fn func(Record[K, V]) bool) Processor[K, V, K, V] {
+	return ProcessorFunc[K, V, K, V](func(ctx context.Context, msg Record[K, V], next func(o Record[K, V]) error) error {
+		if fn(msg) {
+			return next(msg)
 		}
-	}
-	return nil
+		return nil
+	})
+}
+
+func Map[KIn, VIn, KOut, VOut any](fn func(Record[KIn, VIn]) Record[KOut, VOut]) Processor[KIn, VIn, KOut, VOut] {
+	return ProcessorFunc[KIn, VIn, KOut, VOut](func(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error {
+		return next(fn(msg))
+	})
+}
+
+func FlatMap[KIn, VIn, KOut, VOut any](fn func(Record[KIn, VIn]) []Record[KOut, VOut]) Processor[KIn, VIn, KOut, VOut] {
+	return ProcessorFunc[KIn, VIn, KOut, VOut](func(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error {
+		outs := fn(msg)
+		for _, out := range outs {
+			if err := next(out); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

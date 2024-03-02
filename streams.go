@@ -113,6 +113,14 @@ func Through[K, V any](s *Stream[K, V], p Pipe, serde MarshalerUnmarshaler[K, V]
 }
 
 /*
+func Aggregate[K, V any](s *[Stream[K, V], agg func(K, V, V) V) *Stream[K, V] {
+	node := &aggregatorNode[K, V]{
+		agg: agg,
+	}
+}
+/*
+
+/*
 type GroupedStream[In any, Key comparable] struct {
 	fn   func(In) Key
 	node topologyNode
