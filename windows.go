@@ -11,12 +11,12 @@ type WindowKey[K comparable] struct {
 	K     K
 }
 
-type WindowReader[K comparable, V any] struct {
+type windowReader[K comparable, V any] struct {
 	windower func(ctx context.Context, r Record[K, V]) (Record[WindowKey[K], V], error)
 	r        Reader[K, V]
 }
 
-func (w *WindowReader[K, V]) Read(ctx context.Context) (Record[WindowKey[K], V], error) {
+func (w *windowReader[K, V]) Read(ctx context.Context) (Record[WindowKey[K], V], error) {
 	r, err := w.r.Read(ctx)
 	if err != nil {
 		return Record[WindowKey[K], V]{}, err
@@ -48,7 +48,7 @@ func window[K comparable, V any](r Record[K, V], t time.Time, cfg TimeWindows) R
 }
 
 func RealTimeWindow[K comparable, V any](reader Reader[K, V], cfg TimeWindows) Reader[WindowKey[K], V] {
-	return &WindowReader[K, V]{
+	return &windowReader[K, V]{
 		windower: func(ctx context.Context, r Record[K, V]) (Record[WindowKey[K], V], error) {
 			return window[K, V](r, time.Now(), cfg), nil
 		},
@@ -57,7 +57,7 @@ func RealTimeWindow[K comparable, V any](reader Reader[K, V], cfg TimeWindows) R
 }
 
 func RecordTimeWindow[K comparable, V any](reader Reader[K, V], cfg TimeWindows) Reader[WindowKey[K], V] {
-	return &WindowReader[K, V]{
+	return &windowReader[K, V]{
 		windower: func(ctx context.Context, r Record[K, V]) (Record[WindowKey[K], V], error) {
 			return window[K, V](r, r.Time, cfg), nil
 		},

@@ -4,17 +4,17 @@ import (
 	"context"
 )
 
-type AggregatorReader[K comparable, In any, Out any] struct {
+type aggregatorReader[K comparable, In any, Out any] struct {
 	r     Reader[K, In]
 	agg   func(Record[K, In], Out) Out
 	state State[K, Out]
 }
 
-func (a *AggregatorReader[K, In, Out]) get(key K) (Out, error) {
+func (a *aggregatorReader[K, In, Out]) get(key K) (Out, error) {
 	return a.state.Get(key)
 }
 
-func (a *AggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[K, Out], error) {
+func (a *aggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[K, Out], error) {
 	msg, err := a.r.Read(ctx)
 	if err != nil {
 		return Record[K, Out]{}, err
@@ -36,7 +36,7 @@ func (a *AggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[K, Out]
 }
 
 func Aggregate[K comparable, In any, Out any](reader Reader[K, In], state State[K, Out], agg func(Record[K, In], Out) Out) TableReader[K, Out] {
-	return &AggregatorReader[K, In, Out]{
+	return &aggregatorReader[K, In, Out]{
 		r:     reader,
 		agg:   agg,
 		state: state,
