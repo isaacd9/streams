@@ -34,28 +34,14 @@ func TestWordLen(t *testing.T) {
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
-	rr := Map(func(s Record[string, string]) Record[string, string] {
-		return Record[string, string]{
-			Key: s.Key,
-			Val: strings.ToLower(s.Val),
-		}
+	rr := MapValues[string](func(in string) string {
+		return strings.ToLower(in)
 	})
-	fm := FlatMap(func(r Record[string, string]) []Record[string, string] {
-		sp := strings.Split(r.Val, " ")
-		var ret []Record[string, string]
-		for _, s := range sp {
-			ret = append(ret, Record[string, string]{
-				Key: r.Key,
-				Val: strings.ToLower(s),
-			})
-		}
-		return ret
+	fm := FlatMapValues[string](func(s string) []string {
+		return strings.Split(s, " ")
 	})
-	m := Map(func(s Record[string, string]) Record[string, int] {
-		return Record[string, int]{
-			Key: s.Key,
-			Val: len(s.Val),
-		}
+	m := MapValues[string](func(s string) int {
+		return len(s)
 	})
 
 	var e Executor

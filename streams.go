@@ -118,7 +118,6 @@ func Aggregate[K, V any](s *[Stream[K, V], agg func(K, V, V) V) *Stream[K, V] {
 		agg: agg,
 	}
 }
-/*
 
 /*
 type GroupedStream[In any, Key comparable] struct {
