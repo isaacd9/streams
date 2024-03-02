@@ -137,7 +137,7 @@ func TestReducer(t *testing.T) {
 		return i
 	}))
 
-	sss := Process(ss, Map[string, int, string, int](func(r Record[string, int]) Record[string, int] {
+	sss := Process(ss, Map(func(r Record[string, int]) Record[string, int] {
 		var k string
 		if r.Val < 10 {
 			k = "small"
@@ -145,10 +145,13 @@ func TestReducer(t *testing.T) {
 			k = "big"
 		}
 
-		return Record[string, int]{Key: k, Val: r.Val}
+		return Record[string, int]{
+			Key: k,
+			Val: r.Val,
+		}
 	}))
 
-	agg := Aggregate[string, int, int](sss, NewReducer(NewMapState[string, int](), func(k string, a, b int) int {
+	agg := Aggregate(sss, NewReducer(NewMapState[string, int](), func(k string, a, b int) int {
 		return a + b
 	}))
 
