@@ -73,13 +73,13 @@ func TestWordCount(t *testing.T) {
 
 	counter := NewCount[string, string](NewMapState[string, uint64]())
 
-	a := NewStream(ex, r, StringUnmarshaler())
-	b := Process(a, fm)
-	c := Process(b, makeKeys)
+	s := NewStream(ex, r, StringUnmarshaler())
+	s = Process(s, fm)
+	s = Process(s, makeKeys)
 	// e := GrouBy(c, g)
-	d := Through(c, pipe, StringMarshalerUnmarshaler())
-	e := Aggregate[string, string, uint64](d, counter)
-	To(ToStream(e), IntMarshaler(), &TestWriter{})
+	s = Through(s, pipe, StringMarshalerUnmarshaler())
+	a := Aggregate[string, string, uint64](s, counter)
+	To(ToStream(a), IntMarshaler(), &TestWriter{})
 
 	ex.Execute(context.Background())
 }
