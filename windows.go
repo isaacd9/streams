@@ -30,23 +30,27 @@ type TimeWindows struct {
 	Advance time.Duration
 }
 
+func window[K comparable, V any](r Record[K, V], t time.Time, cfg TimeWindows) Record[WindowKey[K], V] {
+	windowStart := t.Truncate(cfg.Size)
+	windowEnd := windowStart.Add(cfg.Advance)
+
+	key := WindowKey[K]{
+		Start: windowStart,
+		End:   windowEnd,
+		K:     r.Key,
+	}
+
+	return Record[WindowKey[K], V]{
+		Key:   key,
+		Value: r.Value,
+		Time:  r.Time,
+	}
+}
+
 func RealTimeWindow[K comparable, V any](reader Reader[K, V], cfg TimeWindows) Reader[WindowKey[K], V] {
 	return &WindowReader[K, V]{
 		windower: func(ctx context.Context, r Record[K, V]) (Record[WindowKey[K], V], error) {
-			windowStart := time.Now().Truncate(cfg.Size)
-			windowEnd := windowStart.Add(cfg.Advance)
-
-			key := WindowKey[K]{
-				Start: windowStart,
-				End:   windowEnd,
-				K:     r.Key,
-			}
-
-			return Record[WindowKey[K], V]{
-				Key:   key,
-				Value: r.Value,
-				Time:  r.Time,
-			}, nil
+			return window[K, V](r, time.Now(), cfg), nil
 		},
 		r: reader,
 	}
@@ -55,20 +59,7 @@ func RealTimeWindow[K comparable, V any](reader Reader[K, V], cfg TimeWindows) R
 func RecordTimeWindow[K comparable, V any](reader Reader[K, V], cfg TimeWindows) Reader[WindowKey[K], V] {
 	return &WindowReader[K, V]{
 		windower: func(ctx context.Context, r Record[K, V]) (Record[WindowKey[K], V], error) {
-			windowStart := r.Time.Truncate(cfg.Size)
-			windowEnd := windowStart.Add(cfg.Advance)
-
-			key := WindowKey[K]{
-				Start: windowStart,
-				End:   windowEnd,
-				K:     r.Key,
-			}
-
-			return Record[WindowKey[K], V]{
-				Key:   key,
-				Value: r.Value,
-				Time:  r.Time,
-			}, nil
+			return window[K, V](r, r.Time, cfg), nil
 		},
 		r: reader,
 	}
