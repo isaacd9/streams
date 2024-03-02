@@ -39,9 +39,8 @@ func NewCount[K comparable, In any](state State[K, uint64]) Aggregator[K, In, ui
 	})
 }
 
-func NewReducer[K comparable, V any](state State[K, V], reducer func(k K, a, b V)) Aggregator[K, V, V] {
+func NewReducer[K comparable, V any](state State[K, V], reducer func(k K, a, b V) V) Aggregator[K, V, V] {
 	return NewAggregation(state, func(r Record[K, V], v V) V {
-		reducer(r.Key, v, r.Val)
-		return v
+		return reducer(r.Key, v, r.Val)
 	})
 }

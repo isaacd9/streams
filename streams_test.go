@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -117,32 +118,40 @@ func TestWindowedWordCount(t *testing.T) {
 	ex.Execute(context.Background())
 }
 
-/*
 func TestReducer(t *testing.T) {
-	r := &TestReader[int]{st: []int{
-		1, 2, 3,
-		10, 20, 30,
+	r := &TestReader{st: []string{
+		"1, 2, 3",
+		"10, 20, 30",
 	}}
 
-	gb := NewGroupBy[int, string](r, func(s int) string {
-		if s > 9 {
-			return "big"
-		} else {
-			return "small"
-		}
-	})
-
-	reducer := NewReducer[string, int](gb, 0, func(a, b int) int {
-		return a + b
-	})
-
-	for {
-		k, m, err := reducer.ReadMessage(context.Background())
+	ex := NewExecutor()
+	s := NewStream(ex, r, StringUnmarshaler())
+	s = Process(s, FlatMapValues[string](func(s string) []string {
+		return strings.Split(s, ", ")
+	}))
+	ss := Process(s, MapValues[string](func(s string) int {
+		i, err := strconv.Atoi(s)
 		if err != nil {
-			return
+			panic(err)
 		}
-		log.Printf("%q=%d", k, m)
-	}
-}
+		return i
+	}))
 
-*/
+	sss := Process(ss, Map[string, int, string, int](func(r Record[string, int]) Record[string, int] {
+		var k string
+		if r.Val < 10 {
+			k = "small"
+		} else {
+			k = "big"
+		}
+
+		return Record[string, int]{Key: k, Val: r.Val}
+	}))
+
+	agg := Aggregate[string, int, int](sss, NewReducer(NewMapState[string, int](), func(k string, a, b int) int {
+		return a + b
+	}))
+
+	To(ToStream(agg), AnyMarshaler[string, int](), &TestWriter{})
+	ex.Execute(context.Background())
+}
