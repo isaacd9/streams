@@ -10,11 +10,9 @@ func StringUnmarshaler() Unmarshaler[string, string] {
 
 type stringUnmarshaler struct{}
 
-func (s *stringUnmarshaler) Unmarshal(msg Message) (Record[string, string], error) {
-	return Record[string, string]{
-		Key: string(msg.Key),
-		Val: string(msg.Val),
-	}, nil
+func (s *stringUnmarshaler) Unmarshal(msg Message, r *Record[string, string]) error {
+	r.Val = string(msg.Val)
+	return nil
 }
 
 func StringMarshaler() Marshaler[string, string] {

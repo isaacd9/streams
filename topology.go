@@ -37,8 +37,8 @@ func (s *sourceNode[K, V]) do(ctx context.Context, a any) error {
 			return err
 		}
 
-		t, err := s.d.Unmarshal(msg)
-		if err != nil {
+		var t Record[K, V]
+		if err := s.d.Unmarshal(msg, &t); err != nil {
 			return err
 		}
 		s.child.do(ctx, t)

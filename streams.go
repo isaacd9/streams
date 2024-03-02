@@ -28,11 +28,11 @@ type Pipe interface {
 }
 
 type Unmarshaler[K, V any] interface {
-	Unmarshal(msg Message) (Record[K, V], error)
+	Unmarshal(Message, *Record[K, V]) error
 }
 
 type Marshaler[K, V any] interface {
-	Marshal(t Record[K, V]) (Message, error)
+	Marshal(Record[K, V]) (Message, error)
 }
 
 type MarshalerUnmarshaler[K, V any] interface {
