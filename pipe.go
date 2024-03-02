@@ -24,10 +24,10 @@ func (n *NoopPipe) Close() error {
 
 func (n *NoopPipe) Read(ctx context.Context) (Message, error) {
 	select {
-	case <-n.done:
-		return Message{}, io.EOF
 	case msg := <-n.ch:
 		return msg, nil
+	case <-n.done:
+		return Message{}, io.EOF
 	case <-ctx.Done():
 		return Message{}, ctx.Err()
 	}

@@ -1,6 +1,8 @@
 package streams
 
-import "context"
+import (
+	"context"
+)
 
 type AggregatorReader[K comparable, In any, Out any] struct {
 	r     Reader[K, In]

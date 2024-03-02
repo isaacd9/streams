@@ -89,35 +89,32 @@ func TestInProcessWordCount(t *testing.T) {
 
 func TestThroughWordCount(t *testing.T) {
 	intermediate := NewNoopPipe()
+
 	go func() {
-		um := Map(intermediate, func(r Message) Record[string, string] {
+		r := &TestReader{st: []string{
+			"the quick BROWN",
+			"fox JUMPS over",
+			"the lazy lazy dog",
+		}}
+		split := FlatMapValues(UnmarshalString(r), func(s string) []string {
+			return strings.Split(s, " ")
+		})
+		rekey := Map(split, func(r Record[string, string]) Record[string, string] {
 			return Record[string, string]{
-				Key:   string(r.Key),
-				Value: string(r.Value),
+				Key: strings.ToLower(r.Value),
 			}
 		})
-		count := Count(um, NewMapState[string, uint64]())
-		Pipe(MarshalAny(count), &TestWriter{})
+		_, err := Pipe(MarshalAny(rekey), intermediate)
+		if err != nil {
+			t.Errorf("error: %v", err)
+		}
+
+		_ = intermediate.Close()
 	}()
 
-	r := &TestReader{st: []string{
-		"the quick BROWN",
-		"fox JUMPS over",
-		"the lazy lazy dog",
-	}}
-	split := FlatMapValues(UnmarshalString(r), func(s string) []string {
-		return strings.Split(s, " ")
-	})
-	rekey := Map(split, func(r Record[string, string]) Record[string, string] {
-		return Record[string, string]{
-			Key: strings.ToLower(r.Value),
-		}
-	})
-	n, err := Pipe(MarshalAny(rekey), intermediate)
-	if err != nil {
-		t.Errorf("error: %v", err)
-	}
-	intermediate.Close()
+	state := NewMapState[string, uint64]()
+	count := Count(UnmarshalString(intermediate), state)
+	Pipe(MarshalAny(count), &TestWriter{})
 	// log.Printf("processed %d records", n)
 
 }
