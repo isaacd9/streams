@@ -2,109 +2,151 @@ package streams
 
 import "context"
 
-type Processor[KIn, VIn, KOut, VOut any] interface {
-	ProcessMessage(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error
+type FilterReader[K, V any] struct {
+	r  Reader[K, V]
+	fn func(Record[K, V]) bool
 }
 
-type ProcessorFunc[KIn, VIn, KOut, VOut any] func(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error
-
-func (p ProcessorFunc[KIn, VIn, KOut, VOut]) ProcessMessage(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error {
-	return p(ctx, msg, next)
-}
-
-func Filter[K, V any](fn func(Record[K, V]) bool) Processor[K, V, K, V] {
-	return ProcessorFunc[K, V, K, V](func(ctx context.Context, msg Record[K, V], next func(o Record[K, V]) error) error {
-		if fn(msg) {
-			return next(msg)
+func (f *FilterReader[K, V]) Read(ctx context.Context) (Record[K, V], error) {
+	for {
+		msg, err := f.r.Read(ctx)
+		if err != nil {
+			return Record[K, V]{}, err
 		}
-		return nil
-	})
-}
 
-func FilterKeys[K, V any](fn func(K) bool) Processor[K, V, K, V] {
-	return ProcessorFunc[K, V, K, V](func(ctx context.Context, msg Record[K, V], next func(o Record[K, V]) error) error {
-		if fn(msg.Key) {
-			return next(msg)
+		if f.fn(msg) {
+			return msg, nil
 		}
-		return nil
-	})
+	}
 }
 
-func FilterValues[K, V any](fn func(V) bool) Processor[K, V, K, V] {
-	return ProcessorFunc[K, V, K, V](func(ctx context.Context, msg Record[K, V], next func(o Record[K, V]) error) error {
-		if fn(msg.Val) {
-			return next(msg)
-		}
-		return nil
-	})
+func Filter[K, V any](r Reader[K, V], fn func(Record[K, V]) bool) Reader[K, V] {
+	return &FilterReader[K, V]{
+		r:  r,
+		fn: fn,
+	}
 }
 
-func Map[KIn, VIn, KOut, VOut any](fn func(Record[KIn, VIn]) Record[KOut, VOut]) Processor[KIn, VIn, KOut, VOut] {
-	return ProcessorFunc[KIn, VIn, KOut, VOut](func(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error {
-		return next(fn(msg))
-	})
+func FilterKeys[K, V any](r Reader[K, V], fn func(K) bool) Reader[K, V] {
+	return &FilterReader[K, V]{
+		r: r,
+		fn: func(msg Record[K, V]) bool {
+			return fn(msg.Key)
+		},
+	}
 }
 
-func MapValues[K, VIn, VOut any](fn func(VIn) VOut) Processor[K, VIn, K, VOut] {
-	return ProcessorFunc[K, VIn, K, VOut](func(ctx context.Context, msg Record[K, VIn], next func(o Record[K, VOut]) error) error {
-		return next(Record[K, VOut]{
-			Key: msg.Key,
-			Val: fn(msg.Val),
-		})
-	})
+func FilterValues[K, V any](r Reader[K, V], fn func(V) bool) Reader[K, V] {
+	return &FilterReader[K, V]{
+		r: r,
+		fn: func(msg Record[K, V]) bool {
+			return fn(msg.Value)
+		},
+	}
 }
 
-func MapKeys[KIn, KOut, V any](fn func(KIn) KOut) Processor[KIn, V, KOut, V] {
-	return ProcessorFunc[KIn, V, KOut, V](func(ctx context.Context, msg Record[KIn, V], next func(o Record[KOut, V]) error) error {
-		return next(Record[KOut, V]{
-			Key: fn(msg.Key),
-			Val: msg.Val,
-		})
-	})
+type MapReader[KIn, VIn, KOut, VOut any] struct {
+	r  Reader[KIn, VIn]
+	fn func(Record[KIn, VIn]) Record[KOut, VOut]
 }
 
-func FlatMap[KIn, VIn, KOut, VOut any](fn func(Record[KIn, VIn]) []Record[KOut, VOut]) Processor[KIn, VIn, KOut, VOut] {
-	return ProcessorFunc[KIn, VIn, KOut, VOut](func(ctx context.Context, msg Record[KIn, VIn], next func(o Record[KOut, VOut]) error) error {
-		outs := fn(msg)
-		for _, out := range outs {
-			if err := next(out); err != nil {
-				return err
+func (m *MapReader[KIn, VIn, KOut, VOut]) Read(ctx context.Context) (Record[KOut, VOut], error) {
+	msg, err := m.r.Read(ctx)
+	if err != nil {
+		return Record[KOut, VOut]{}, err
+	}
+
+	return m.fn(msg), nil
+}
+
+func Map[KIn, VIn, KOut, VOut any](r Reader[KIn, VIn], fn func(Record[KIn, VIn]) Record[KOut, VOut]) Reader[KOut, VOut] {
+	return &MapReader[KIn, VIn, KOut, VOut]{
+		r:  r,
+		fn: fn,
+	}
+}
+
+func MapValues[K, VIn, VOut any](r Reader[K, VIn], fn func(VIn) VOut) Reader[K, VOut] {
+	return &MapReader[K, VIn, K, VOut]{
+		r: r,
+		fn: func(msg Record[K, VIn]) Record[K, VOut] {
+			return Record[K, VOut]{
+				Key:   msg.Key,
+				Value: fn(msg.Value),
 			}
-		}
-		return nil
-	})
+		},
+	}
 }
 
-func FlatMapValues[K, VIn, VOut any](fn func(VIn) []VOut) Processor[K, VIn, K, VOut] {
-	return ProcessorFunc[K, VIn, K, VOut](func(ctx context.Context, msg Record[K, VIn], next func(o Record[K, VOut]) error) error {
-		outs := fn(msg.Val)
-		for _, out := range outs {
-			err := next(Record[K, VOut]{
-				Key: msg.Key,
-				Val: out,
-			})
-
-			if err != nil {
-				return err
+func MapKeys[KIn, KOut, V any](r Reader[KIn, V], fn func(KIn) KOut) Reader[KOut, V] {
+	return &MapReader[KIn, V, KOut, V]{
+		r: r,
+		fn: func(msg Record[KIn, V]) Record[KOut, V] {
+			return Record[KOut, V]{
+				Key:   fn(msg.Key),
+				Value: msg.Value,
 			}
-		}
-		return nil
-	})
+		},
+	}
 }
 
-func FlatMapKeys[KIn, KOut, V any](fn func(KIn) []KOut) Processor[KIn, V, KOut, V] {
-	return ProcessorFunc[KIn, V, KOut, V](func(ctx context.Context, msg Record[KIn, V], next func(o Record[KOut, V]) error) error {
-		outs := fn(msg.Key)
-		for _, out := range outs {
-			err := next(Record[KOut, V]{
-				Key: out,
-				Val: msg.Val,
-			})
+type FlatMapReader[KIn, VIn, KOut, VOut any] struct {
+	r     Reader[KIn, VIn]
+	fn    func(Record[KIn, VIn]) []Record[KOut, VOut]
+	batch []Record[KOut, VOut]
+}
 
-			if err != nil {
-				return err
-			}
+func (f *FlatMapReader[KIn, VIn, KOut, VOut]) Read(ctx context.Context) (Record[KOut, VOut], error) {
+	if len(f.batch) == 0 {
+		msg, err := f.r.Read(ctx)
+		if err != nil {
+			return Record[KOut, VOut]{}, err
 		}
-		return nil
-	})
+		f.batch = f.fn(msg)
+	}
+
+	out := f.batch[0]
+	f.batch = f.batch[1:]
+	return out, nil
+}
+
+func FlatMap[KIn, VIn, KOut, VOut any](r Reader[KIn, VIn], fn func(Record[KIn, VIn]) []Record[KOut, VOut]) Reader[KOut, VOut] {
+	return &FlatMapReader[KIn, VIn, KOut, VOut]{
+		r:  r,
+		fn: fn,
+	}
+}
+
+func FlatMapValues[K, VIn, VOut any](r Reader[K, VIn], fn func(VIn) []VOut) Reader[K, VOut] {
+	return &FlatMapReader[K, VIn, K, VOut]{
+		r: r,
+		fn: func(msg Record[K, VIn]) []Record[K, VOut] {
+			outs := fn(msg.Value)
+			batch := make([]Record[K, VOut], len(outs))
+			for i, out := range outs {
+				batch[i] = Record[K, VOut]{
+					Key:   msg.Key,
+					Value: out,
+				}
+			}
+			return batch
+		},
+	}
+}
+
+func FlatMapKeys[KIn, KOut, V any](r Reader[KIn, V], fn func(KIn) []KOut) Reader[KOut, V] {
+	return &FlatMapReader[KIn, V, KOut, V]{
+		r: r,
+		fn: func(msg Record[KIn, V]) []Record[KOut, V] {
+			outs := fn(msg.Key)
+			batch := make([]Record[KOut, V], len(outs))
+			for i, out := range outs {
+				batch[i] = Record[KOut, V]{
+					Key:   out,
+					Value: msg.Value,
+				}
+			}
+			return batch
+		},
+	}
 }

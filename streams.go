@@ -2,45 +2,43 @@ package streams
 
 import (
 	"context"
+	"io"
 	"time"
 )
 
-type Message struct {
-	Key []byte
-	Val []byte
-}
-
-type Source interface {
-	Read(ctx context.Context) (Message, error)
-}
-
-type Sink interface {
-	Write(ctx context.Context, msg Message) error
-}
+type Message = Record[[]byte, []byte]
 
 type Record[K, V any] struct {
-	Key  K
-	Val  V
-	time time.Time
+	Key   K
+	Value V
+	time  time.Time
 }
 
-type Pipe interface {
-	Source
-	Sink
+type Reader[K, V any] interface {
+	Read(ctx context.Context) (Record[K, V], error)
 }
 
-type Unmarshaler[K, V any] interface {
-	Unmarshal(Message, *Record[K, V]) error
+type Writer[K, V any] interface {
+	Write(ctx context.Context, r Record[K, V]) error
 }
 
-type Marshaler[K, V any] interface {
-	Marshal(Record[K, V]) (Message, error)
+func Pipe[K, V any](r Reader[K, V], w Writer[K, V]) error {
+	for {
+		msg, err := r.Read(context.Background())
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return nil
+		}
+
+		if err := w.Write(context.Background(), msg); err != nil {
+			return nil
+		}
+	}
 }
 
-type MarshalerUnmarshaler[K, V any] interface {
-	Unmarshaler[K, V]
-	Marshaler[K, V]
-}
+/*
 
 type Stream[K, V any] struct {
 	e        *Executor
@@ -75,20 +73,6 @@ func To[K, V any](s *Stream[K, V], Marshaler Marshaler[K, V], sink Sink) {
 
 	s.e.last.setNext(node)
 	s.e.last = node
-}
-
-func Process[KIn, VIn, KOut, VOut any](s *Stream[KIn, VIn], p Processor[KIn, VIn, KOut, VOut]) *Stream[KOut, VOut] {
-	node := &processorNode[KIn, VIn, KOut, VOut]{
-		p: p,
-	}
-
-	s.e.last.setNext(node)
-	s.e.last = node
-
-	return &Stream[KOut, VOut]{
-		e:    s.e,
-		node: node,
-	}
 }
 
 func Through[K, V any](s *Stream[K, V], p Pipe, serde MarshalerUnmarshaler[K, V]) *Stream[K, V] {
@@ -157,3 +141,5 @@ func Aggregate[K comparable, VIn any, VOut any](s *Stream[K, VIn], agg Aggregato
 
 	return ks
 }
+
+*/

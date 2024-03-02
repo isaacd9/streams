@@ -38,8 +38,8 @@ func NewRealTimeWindow[K comparable, V any](cfg TimeWindows) Windower[K, V] {
 		}
 
 		return next(Record[WindowKey[K], V]{
-			Key: key,
-			Val: r.Val,
+			Key:   key,
+			Value: r.Value,
 		})
 	})
 }

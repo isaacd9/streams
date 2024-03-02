@@ -2,45 +2,48 @@ package streams
 
 import "context"
 
-type Aggregator[K comparable, VIn, VOut any] interface {
-	Aggregate(context.Context, Record[K, VIn], func(Record[K, VOut]) error) error
-}
-
-type Aggregation[K comparable, In any, Out any] struct {
+type AggregatorReader[K comparable, In any, Out any] struct {
+	r     Reader[K, In]
 	agg   func(Record[K, In], Out) Out
 	state State[K, Out]
 }
 
-func NewAggregation[K comparable, VIn any, VOut any](state State[K, VOut], agg func(Record[K, VIn], VOut) VOut) Aggregator[K, VIn, VOut] {
-	return &Aggregation[K, VIn, VOut]{
+func (a *AggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[K, Out], error) {
+	msg, err := a.r.Read(ctx)
+	if err != nil {
+		return Record[K, Out]{}, err
+	}
+
+	cur, err := a.state.Get(msg.Key)
+	if err != nil {
+		return Record[K, Out]{}, err
+	}
+
+	new := a.agg(msg, cur)
+	a.state.Put(msg.Key, new)
+
+	return Record[K, Out]{
+		Key:   msg.Key,
+		Value: new,
+	}, nil
+}
+
+func Aggregate[K comparable, In any, Out any](reader Reader[K, In], state State[K, Out], agg func(Record[K, In], Out) Out) Reader[K, Out] {
+	return &AggregatorReader[K, In, Out]{
+		r:     reader,
 		agg:   agg,
 		state: state,
 	}
 }
 
-func (a *Aggregation[K, VIn, VOut]) Aggregate(ctx context.Context, r Record[K, VIn], next func(o Record[K, VOut]) error) error {
-	cur, err := a.state.Get(r.Key)
-	if err != nil {
-		return err
-	}
-
-	new := a.agg(r, cur)
-	a.state.Put(r.Key, new)
-
-	return next(Record[K, VOut]{
-		Key: r.Key,
-		Val: new,
-	})
-}
-
-func NewCount[K comparable, In any](state State[K, uint64]) Aggregator[K, In, uint64] {
-	return NewAggregation(state, func(r Record[K, In], u uint64) uint64 {
+func Count[K comparable, In any](r Reader[K, In], state State[K, uint64]) Reader[K, uint64] {
+	return Aggregate(r, state, func(r Record[K, In], u uint64) uint64 {
 		return u + 1
 	})
 }
 
-func NewReducer[K comparable, V any](state State[K, V], reducer func(k K, a, b V) V) Aggregator[K, V, V] {
-	return NewAggregation(state, func(r Record[K, V], v V) V {
-		return reducer(r.Key, v, r.Val)
+func NewReducer[K comparable, V any](r Reader[K, V], state State[K, V], reducer func(k K, a, b V) V) Reader[K, V] {
+	return Aggregate(r, state, func(r Record[K, V], v V) V {
+		return reducer(r.Key, v, r.Value)
 	})
 }
