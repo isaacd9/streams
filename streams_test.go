@@ -60,7 +60,7 @@ func TestWordLen(t *testing.T) {
 	Pipe(marshal, &TestWriter{})
 }
 
-func TestWordCount(t *testing.T) {
+func TestInProcessWordCount(t *testing.T) {
 	r := &TestReader{st: []string{
 		"the quick BROWN",
 		"fox JUMPS over",
@@ -83,6 +83,57 @@ func TestWordCount(t *testing.T) {
 
 	count := Count(rekey, NewMapState[string, uint64]())
 
+	marshal := Map(count, func(r Record[string, uint64]) Message {
+		return Message{
+			Key:   []byte(fmt.Sprintf("%v", r.Key)),
+			Value: []byte(fmt.Sprintf("%v", r.Value)),
+		}
+	})
+
+	Pipe(marshal, &TestWriter{})
+}
+
+func TestThroughWordCount(t *testing.T) {
+	intermediate := NewNoopPipe()
+
+	r := &TestReader{st: []string{
+		"the quick BROWN",
+		"fox JUMPS over",
+		"the lazy lazy dog",
+	}}
+	unmarshal := Map(r, func(r Message) Record[string, string] {
+		return Record[string, string]{
+			Key:   string(r.Key),
+			Value: string(r.Value),
+		}
+	})
+	split := FlatMapValues(unmarshal, func(s string) []string {
+		return strings.Split(s, " ")
+	})
+	rekey := Map(split, func(r Record[string, string]) Record[string, string] {
+		return Record[string, string]{
+			Key: strings.ToLower(r.Value),
+		}
+	})
+	rekeyMarshal := Map(rekey, func(r Record[string, string]) Message {
+		return Message{
+			Key:   []byte(fmt.Sprintf("%v", r.Key)),
+			Value: []byte(fmt.Sprintf("%v", r.Value)),
+		}
+	})
+
+	go func() {
+		Pipe(rekeyMarshal, intermediate)
+		intermediate.Close()
+	}()
+
+	um := Map(intermediate, func(r Message) Record[string, string] {
+		return Record[string, string]{
+			Key:   string(r.Key),
+			Value: string(r.Value),
+		}
+	})
+	count := Count(um, NewMapState[string, uint64]())
 	marshal := Map(count, func(r Record[string, uint64]) Message {
 		return Message{
 			Key:   []byte(fmt.Sprintf("%v", r.Key)),
