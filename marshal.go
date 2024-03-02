@@ -11,6 +11,7 @@ func StringUnmarshaler() Unmarshaler[string, string] {
 type stringUnmarshaler struct{}
 
 func (s *stringUnmarshaler) Unmarshal(msg Message, r *Record[string, string]) error {
+	r.Key = string(msg.Key)
 	r.Val = string(msg.Val)
 	return nil
 }
@@ -40,15 +41,15 @@ func StringMarshalerUnmarshaler() MarshalerUnmarshaler[string, string] {
 	}
 }
 
-func IntMarshaler() Marshaler[string, int] {
+func IntMarshaler() Marshaler[string, uint64] {
 	return &intMarshaler{}
 }
 
 type intMarshaler struct{}
 
-func (s *intMarshaler) Marshal(i Record[string, int]) (Message, error) {
+func (s *intMarshaler) Marshal(i Record[string, uint64]) (Message, error) {
 	return Message{
 		Key: []byte(i.Key),
-		Val: []byte(strconv.Itoa(i.Val)),
+		Val: []byte(strconv.Itoa(int(i.Val))),
 	}, nil
 }

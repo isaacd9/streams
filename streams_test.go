@@ -40,8 +40,8 @@ func TestWordLen(t *testing.T) {
 	fm := FlatMapValues[string](func(s string) []string {
 		return strings.Split(s, " ")
 	})
-	m := MapValues[string](func(s string) int {
-		return len(s)
+	m := MapValues[string](func(s string) uint64 {
+		return uint64(len(s))
 	})
 
 	var e Executor
@@ -60,33 +60,28 @@ func TestWordCount(t *testing.T) {
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
-	rr := Map(func(s Record[string, string]) Record[string, string] {
-		return Record[string, string]{
-			Key: s.Key,
-			Val: strings.ToLower(s.Val),
-		}
+	fm := FlatMapValues[string](func(s string) []string {
+		return strings.Split(s, " ")
 	})
-	fm := FlatMap(func(r Record[string, string]) []Record[string, string] {
-		sp := strings.Split(r.Val, " ")
-		var ret []Record[string, string]
-		for _, s := range sp {
-			ret = append(ret, Record[string, string]{
-				Key: r.Key,
-				Val: strings.ToLower(s),
-			})
-		}
-		return ret
+	makeKeys := Map[string, string, string, string](func(r Record[string, string]) Record[string, string] {
+		return Record[string, string]{Key: strings.ToLower(r.Val)}
 	})
 
-	var e Executor
-	a := NewStream(&e, r, StringUnmarshaler())
-	b := Process(a, rr)
-	c := Process(b, fm)
+	pipe := NewNoopPipe()
+
+	ex := NewExecutor()
+
+	counter := NewCount[string, string](NewMapState[string, uint64]())
+
+	a := NewStream(ex, r, StringUnmarshaler())
+	b := Process(a, fm)
+	c := Process(b, makeKeys)
 	// e := GrouBy(c, g)
-	d := Through(c, NewNoopPipe(), StringMarshalerUnmarshaler())
-	To(d, StringMarshaler(), &TestWriter{})
+	d := Through(c, pipe, StringMarshalerUnmarshaler())
+	e := Aggregate[string, string, uint64](d, counter)
+	To(ToStream(e), IntMarshaler(), &TestWriter{})
 
-	e.Execute(context.Background())
+	ex.Execute(context.Background())
 }
 
 /*

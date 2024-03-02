@@ -112,11 +112,32 @@ func Through[K, V any](s *Stream[K, V], p Pipe, serde MarshalerUnmarshaler[K, V]
 	}
 }
 
-/*
-func Aggregate[K, V any](s *[Stream[K, V], agg func(K, V, V) V) *Stream[K, V] {
-	node := &aggregatorNode[K, V]{
+type KeyedStream[K comparable, V any] struct {
+	e    *Executor
+	node topologyNode
+}
+
+func ToStream[K comparable, V any](s *KeyedStream[K, V]) *Stream[K, V] {
+	return &Stream[K, V]{
+		e:    s.e,
+		node: s.node,
+	}
+}
+
+func Aggregate[K comparable, VIn any, VOut any](s *Stream[K, VIn], agg Aggregator[K, VIn, VOut]) *KeyedStream[K, VOut] {
+	node := &aggregatorNode[K, VIn, VOut]{
 		agg: agg,
 	}
+
+	ks := &KeyedStream[K, VOut]{
+		e:    s.e,
+		node: node,
+	}
+
+	s.e.last.setNext(node)
+	s.e.last = node
+
+	return ks
 }
 
 /*

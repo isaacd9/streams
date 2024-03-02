@@ -111,18 +111,22 @@ func (s *pipedNode[K, V]) do(ctx context.Context, a any) error {
 
 }
 
-/*
-type groupedNode[In any, Key comparable] struct {
-	fn  func(In) Key
+type aggregatorNode[K comparable, VIn any, VOut any] struct {
+	agg Aggregator[K, VIn, VOut]
 	out topologyNode
 }
 
-func (s *groupedNode[In, Key]) setNext(n topologyNode) {
+func (s *aggregatorNode[K, VIn, VOut]) setNext(n topologyNode) {
 	s.out = n
 }
 
-func (s *groupedNode[In, Key]) do(ctx context.Context, a any) error {
-	key := g.fn(msg)
-	return s.do(ctx, key, msg)
+func (s *aggregatorNode[K, VIn, VOut]) do(ctx context.Context, a any) error {
+	in, ok := a.(Record[K, VIn])
+	if !ok {
+		return fmt.Errorf("expected type %T, got %T", in, a)
+	}
+
+	return s.agg.Aggregate(ctx, in, func(o Record[K, VOut]) error {
+		return s.out.do(ctx, o)
+	})
 }
-*/
