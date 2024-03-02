@@ -93,11 +93,12 @@ func (s *pipedNode[K, V]) setNext(n topologyNode) {
 }
 
 func (s *pipedNode[K, V]) do(ctx context.Context, a any) error {
-	if err := s.sink.do(ctx, a); err != nil {
-		return err
-	}
+	var err error
+	go func() {
+		err = s.sink.do(ctx, a)
+	}()
 
-	if err := s.source.do(ctx, a); err != nil {
+	if err = s.source.do(ctx, a); err != nil {
 		return err
 	}
 

@@ -97,7 +97,8 @@ func TestWordCount(t *testing.T) {
 	b := Process(a, rr)
 	c := Process(b, fm)
 	// e := GrouBy(c, g)
-	To(c, StringSerializer(), &TestWriter{})
+	d := Through(c, NewNoopPipe(), StringSerde())
+	To(d, StringSerializer(), &TestWriter{})
 
 	e.Execute(context.Background())
 }
