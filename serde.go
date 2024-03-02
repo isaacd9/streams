@@ -31,6 +31,18 @@ func (s *stringSerializer) Write(ctx context.Context, r Record[string, string]) 
 	}, nil
 }
 
+type stringSerde struct {
+	Serializer[string, string]
+	Deserializer[string, string]
+}
+
+func StringSerde() SerDe[string, string] {
+	return &stringSerde{
+		StringSerializer(),
+		StringDeserializer(),
+	}
+}
+
 func IntSerializer() Serializer[string, int] {
 	return &intSerializer{}
 }

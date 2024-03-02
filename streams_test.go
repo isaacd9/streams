@@ -68,18 +68,28 @@ func TestWordLen(t *testing.T) {
 	e.Execute(context.Background())
 }
 
-/*
 func TestWordCount(t *testing.T) {
 	r := &TestReader{st: []string{
 		"the quick BROWN",
 		"fox JUMPS over",
 		"the lazy lazy dog",
 	}}
-	rr := NewMappedProcessor[string, string](func(s string) string {
-		return strings.ToLower(s)
+	rr := NewMappedProcessor(func(s Record[string, string]) Record[string, string] {
+		return Record[string, string]{
+			Key: s.Key,
+			Val: strings.ToLower(s.Val),
+		}
 	})
-	fm := NewFlatMapProcessor[string, string](func(s string) []string {
-		return strings.Split(s, " ")
+	fm := NewFlatMapProcessor(func(r Record[string, string]) []Record[string, string] {
+		sp := strings.Split(r.Val, " ")
+		var ret []Record[string, string]
+		for _, s := range sp {
+			ret = append(ret, Record[string, string]{
+				Key: r.Key,
+				Val: strings.ToLower(s),
+			})
+		}
+		return ret
 	})
 
 	var e Executor
@@ -92,6 +102,7 @@ func TestWordCount(t *testing.T) {
 	e.Execute(context.Background())
 }
 
+/*
 func TestWindowedWordCount(t *testing.T) {
 	r := &TestReader[string]{st: []string{
 		"the quick BROWN",
