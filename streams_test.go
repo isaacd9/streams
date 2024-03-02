@@ -28,7 +28,7 @@ func (m *TestWriter) Write(ctx context.Context, msg []byte) error {
 	return nil
 }
 
-func TestWordCount(t *testing.T) {
+func TestWordLen(t *testing.T) {
 	r := &TestReader{st: []string{
 		"the quick BROWN",
 		"fox JUMPS over",
