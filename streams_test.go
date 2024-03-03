@@ -14,13 +14,13 @@ type TestReader struct {
 	st []string
 }
 
-func (m *TestReader) Read(ctx context.Context) (Message, error) {
+func (m *TestReader) Read(ctx context.Context) (Message, CommitFunc, error) {
 	if len(m.st) == 0 {
-		return Message{}, io.EOF
+		return Message{}, func() error { return nil }, io.EOF
 	}
 	r := m.st[0]
 	m.st = m.st[1:]
-	return Message{Value: []byte(r)}, nil
+	return Message{Value: []byte(r)}, func() error { return nil }, nil
 }
 
 type TestWriter struct{}

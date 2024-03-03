@@ -20,13 +20,14 @@ type windowReader[K comparable, V any] struct {
 	r        Reader[K, V]
 }
 
-func (w *windowReader[K, V]) Read(ctx context.Context) (Record[WindowKey[K], V], error) {
-	r, err := w.r.Read(ctx)
+func (w *windowReader[K, V]) Read(ctx context.Context) (Record[WindowKey[K], V], CommitFunc, error) {
+	r, done, err := w.r.Read(ctx)
 	if err != nil {
-		return Record[WindowKey[K], V]{}, err
+		return Record[WindowKey[K], V]{}, done, err
 	}
 
-	return w.windower(ctx, r)
+	msg, err := w.windower(ctx, r)
+	return msg, done, nil
 }
 
 type TimeWindows struct {
@@ -79,15 +80,15 @@ func (a *windowAggregatorReader[K, In, Out]) get(key WindowKey[K]) (Out, error) 
 	return a.state.Get(key)
 }
 
-func (a *windowAggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[WindowKey[K], Out], error) {
-	msg, err := a.r.Read(ctx)
+func (a *windowAggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[WindowKey[K], Out], CommitFunc, error) {
+	msg, done, err := a.r.Read(ctx)
 	if err != nil {
-		return Record[WindowKey[K], Out]{}, err
+		return Record[WindowKey[K], Out]{}, done, err
 	}
 
 	cur, err := a.state.Get(msg.Key)
 	if err != nil {
-		return Record[WindowKey[K], Out]{}, err
+		return Record[WindowKey[K], Out]{}, done, err
 	}
 
 	new := a.agg(msg, cur)
@@ -97,7 +98,7 @@ func (a *windowAggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[W
 		Key:   msg.Key,
 		Value: new,
 		Time:  msg.Time,
-	}, nil
+	}, done, nil
 }
 
 func WindowAggregate[K comparable, In any, Out any](reader Reader[WindowKey[K], In], state WindowState[K, Out], agg func(Record[WindowKey[K], In], Out) Out) TableReader[WindowKey[K], Out] {

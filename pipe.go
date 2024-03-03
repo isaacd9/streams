@@ -22,14 +22,18 @@ func (n *NoopPipe) Close() error {
 	return nil
 }
 
-func (n *NoopPipe) Read(ctx context.Context) (Message, error) {
+func (n *NoopPipe) Read(ctx context.Context) (Message, CommitFunc, error) {
+	commit := func() error {
+		return nil
+	}
+
 	select {
 	case msg := <-n.ch:
-		return msg, nil
+		return msg, commit, nil
 	case <-n.done:
-		return Message{}, io.EOF
+		return Message{}, commit, io.EOF
 	case <-ctx.Done():
-		return Message{}, ctx.Err()
+		return Message{}, commit, ctx.Err()
 	}
 }
 

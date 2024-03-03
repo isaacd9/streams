@@ -19,15 +19,15 @@ func (a *aggregatorReader[K, In, Out]) get(key K) (Out, error) {
 	return a.state.Get(key)
 }
 
-func (a *aggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[K, Out], error) {
-	msg, err := a.r.Read(ctx)
+func (a *aggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[K, Out], CommitFunc, error) {
+	msg, done, err := a.r.Read(ctx)
 	if err != nil {
-		return Record[K, Out]{}, err
+		return Record[K, Out]{}, done, err
 	}
 
 	cur, err := a.state.Get(msg.Key)
 	if err != nil {
-		return Record[K, Out]{}, err
+		return Record[K, Out]{}, done, err
 	}
 
 	new := a.agg(msg, cur)
@@ -37,7 +37,7 @@ func (a *aggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[K, Out]
 		Key:   msg.Key,
 		Value: new,
 		Time:  msg.Time,
-	}, nil
+	}, done, nil
 }
 
 func Aggregate[K comparable, In any, Out any](reader Reader[K, In], state State[K, Out], agg func(Record[K, In], Out) Out) TableReader[K, Out] {

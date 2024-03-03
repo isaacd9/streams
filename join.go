@@ -14,15 +14,15 @@ type TableJoinReader[K comparable, V, VJoin, VOut any] struct {
 	Joiner func(Record[K, V], VJoin) VOut
 }
 
-func (j *TableJoinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[K, VOut], error) {
-	msg, err := j.Reader.Read(ctx)
+func (j *TableJoinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[K, VOut], CommitFunc, error) {
+	msg, done, err := j.Reader.Read(ctx)
 	if err != nil {
-		return Record[K, VOut]{}, err
+		return Record[K, VOut]{}, done, err
 	}
 
 	join, err := j.Table.get(msg.Key)
 	if err != nil {
-		return Record[K, VOut]{}, err
+		return Record[K, VOut]{}, done, err
 	}
 
 	out := j.Joiner(msg, join)
@@ -31,7 +31,7 @@ func (j *TableJoinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[K
 		Key:   msg.Key,
 		Value: out,
 		Time:  msg.Time,
-	}, nil
+	}, done, nil
 }
 
 type JoinWindows struct {
@@ -47,7 +47,10 @@ type StreamJoinReader[K comparable, V, VJoin, VOut any] struct {
 	Joiner     func(Record[K, V], Record[K, VJoin]) VOut
 	Cfg        JoinWindows
 
-	batch []Record[K, VOut]
+	batchNo        int
+	batch          []Record[K, VOut]
+	batchRemaining map[int]int
+	batchCommits   map[int]CommitFunc
 }
 
 func min(a, b time.Time) time.Time {
@@ -70,16 +73,29 @@ func readWindow[K comparable, V any](
 	state WindowState[K, V],
 	minTime, maxTime time.Time,
 	cfg JoinWindows,
-) error {
+) (CommitFunc, error) {
+	var dones []CommitFunc
+
+	commit := func() error {
+		for _, done := range dones {
+			if err := done(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	for {
-		msg, err := stream.Read(ctx)
+		msg, done, err := stream.Read(ctx)
 		// log.Printf("read msg: %v", msg)
 		if err != nil {
 			if err == io.EOF {
-				return nil
+				return commit, nil
 			}
-			return err
+			return commit, err
 		}
+
+		dones = append(dones, done)
 
 		// Skip records that are too old and catch up to the
 		// current min
@@ -100,20 +116,34 @@ func readWindow[K comparable, V any](
 		// If we've read all records within the window, we can
 		// stop
 		if msg.Time.After(maxTime) {
-			return nil
+			return commit, nil
 		}
 	}
 }
 
-func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) error {
-	left, err := j.Left.Read(ctx)
-	if err != nil {
-		return err
+func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) (CommitFunc, error) {
+	var dones []CommitFunc
+
+	commit := func() error {
+		for _, done := range dones {
+			if err := done(); err != nil {
+				return err
+
+			}
+		}
+		return nil
 	}
-	right, err := j.Left.Read(ctx)
+
+	left, done, err := j.Left.Read(ctx)
 	if err != nil {
-		return err
+		return commit, err
 	}
+	dones = append(dones, done)
+	right, done, err := j.Left.Read(ctx)
+	if err != nil {
+		return commit, err
+	}
+	dones = append(dones, done)
 
 	minTime := min(left.Time.Add(-j.Cfg.Before), right.Time.Add(-j.Cfg.Before))
 	maxTime := max(left.Time.Add(j.Cfg.After), right.Time.Add(j.Cfg.After))
@@ -123,7 +153,7 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) 
 	// Read all records from the left and right streams that fall within the
 	// window
 	g.Go(func() error {
-		return readWindow(
+		done, err := readWindow(
 			ctx,
 			j.Left,
 			j.LeftState,
@@ -131,10 +161,16 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) 
 			maxTime,
 			j.Cfg,
 		)
+
+		if err != nil {
+			return err
+		}
+		dones = append(dones, done)
+		return nil
 	})
 
 	g.Go(func() error {
-		return readWindow(
+		done, err := readWindow(
 			ctx,
 			j.Right,
 			j.RightState,
@@ -142,10 +178,16 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) 
 			maxTime,
 			j.Cfg,
 		)
+
+		if err != nil {
+			return err
+		}
+		dones = append(dones, done)
+		return nil
 	})
 
 	if err := g.Wait(); err != nil {
-		return err
+		return commit, err
 	}
 
 	j.LeftState.Every(minTime, maxTime, func(key WindowKey[K], value V) error {
@@ -168,18 +210,42 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) 
 		return nil
 	})
 
-	return nil
+	return commit, nil
 }
 
-func (j *StreamJoinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[K, VOut], error) {
+func (j *StreamJoinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[K, VOut], CommitFunc, error) {
 	if len(j.batch) == 0 {
-		if err := j.prepareBatch(ctx); err != nil {
-			return Record[K, VOut]{}, err
+		done, err := j.prepareBatch(ctx)
+		if err != nil {
+			return Record[K, VOut]{}, done, err
 		}
+
+		if j.batchCommits == nil {
+			j.batchCommits = make(map[int]CommitFunc)
+		}
+		j.batchCommits[j.batchNo] = done
+
+		if j.batchRemaining == nil {
+			j.batchRemaining = make(map[int]int)
+		}
+		j.batchRemaining[j.batchNo] = len(j.batch)
+		j.batchNo++
 	}
 
 	// If we have records in the batch, return the first one
 	msg := j.batch[0]
 	j.batch = j.batch[1:]
-	return msg, nil
+
+	commit := func() error {
+		batchNo := j.batchNo
+		j.batchRemaining[batchNo]--
+		if j.batchRemaining[batchNo] == 0 {
+			commit := j.batchCommits[batchNo]
+			delete(j.batchRemaining, batchNo)
+			return commit()
+		}
+		return nil
+	}
+
+	return msg, commit, nil
 }

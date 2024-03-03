@@ -105,12 +105,16 @@ func MapKeys[KIn, KOut, V any](r Reader[KIn, V], fn func(KIn) KOut) Reader[KOut,
 }
 
 type flatMapReader[KIn, VIn, KOut, VOut any] struct {
-	r              Reader[KIn, VIn]
-	fn             func(Record[KIn, VIn]) []Record[KOut, VOut]
-	batchNo        uint64
-	batch          []Record[KOut, VOut]
+	r       Reader[KIn, VIn]
+	fn      func(Record[KIn, VIn]) []Record[KOut, VOut]
+	batchNo uint64
+	batch   []Record[KOut, VOut]
+	// batchRemaining keeps track of how many records are left in the
+	// current batch to commit
 	batchRemaining map[uint64]int
-	batchCommit    func() error
+	// batchCommit is the source reader's commit function for the current
+	// batch
+	batchCommits map[uint64]CommitFunc
 }
 
 func (f *flatMapReader[KIn, VIn, KOut, VOut]) Read(ctx context.Context) (Record[KOut, VOut], CommitFunc, error) {
@@ -119,9 +123,18 @@ func (f *flatMapReader[KIn, VIn, KOut, VOut]) Read(ctx context.Context) (Record[
 		if err != nil {
 			return Record[KOut, VOut]{}, done, err
 		}
-		f.batchCommit = done
 		f.batch = f.fn(msg)
+
+		if f.batchRemaining == nil {
+			f.batchRemaining = make(map[uint64]int)
+		}
 		f.batchRemaining[f.batchNo] = len(f.batch)
+
+		if f.batchCommits == nil {
+			f.batchCommits = make(map[uint64]CommitFunc)
+		}
+		f.batchCommits[f.batchNo] = done
+
 		f.batchNo++
 	}
 
@@ -129,10 +142,13 @@ func (f *flatMapReader[KIn, VIn, KOut, VOut]) Read(ctx context.Context) (Record[
 	f.batch = f.batch[1:]
 
 	commit := CommitFunc(func() error {
-		f.batchRemaining[f.batchNo]--
-		if f.batchRemaining[f.batchNo] == 0 {
-			delete(f.batchRemaining, f.batchNo)
-			return f.batchCommit()
+		// make it clear we're closed over the batchNo
+		batchNo := f.batchNo
+		f.batchRemaining[batchNo]--
+		if f.batchRemaining[batchNo] == 0 {
+			commit := f.batchCommits[batchNo]
+			delete(f.batchRemaining, batchNo)
+			return commit()
 		}
 		return nil
 	})
