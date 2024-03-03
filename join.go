@@ -39,6 +39,7 @@ type JoinWindows struct {
 	After  time.Duration
 }
 
+// This is buggy and doesn't work
 type StreamJoinReader[K comparable, V, VJoin, VOut any] struct {
 	Left       Reader[K, V]
 	Right      Reader[K, VJoin]
