@@ -131,15 +131,17 @@ func TestWindowedWordCount(t *testing.T) {
 		_ = intermediate.Close()
 	}()
 
-	state := NewMapState[WindowKey[string], uint64]()
+	windowState := NewMapWindowState[string, uint64]()
 
 	windowed := RealTimeWindow(UnmarshalString(intermediate), TimeWindows{
-		Size:    2 * time.Minute,
+		Size:    1 * time.Minute,
 		Advance: 1 * time.Minute,
 	})
 
-	counted := Count(windowed, state)
+	counted := WindowCount(windowed, windowState)
 	Pipe(MarshalAny(counted), &TestWriter{})
+
+	log.Printf("state: %v", windowState)
 }
 
 func TestReducer(t *testing.T) {

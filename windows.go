@@ -2,8 +2,13 @@ package streams
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
+
+type WindowedReader[K comparable, V any] interface {
+	Read(ctx context.Context) (Record[WindowKey[K], V], error)
+}
 
 type WindowKey[K comparable] struct {
 	Start time.Time
@@ -63,4 +68,56 @@ func RecordTimeWindow[K comparable, V any](reader Reader[K, V], cfg TimeWindows)
 		},
 		r: reader,
 	}
+}
+
+type windowAggregatorReader[K comparable, In any, Out any] struct {
+	r     Reader[WindowKey[K], In]
+	agg   func(Record[WindowKey[K], In], Out) Out
+	state WindowState[K, Out]
+}
+
+func (a *windowAggregatorReader[K, In, Out]) get(key WindowKey[K]) (Out, error) {
+	var o Out
+	return o, fmt.Errorf("not implemented")
+}
+
+func (a *windowAggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[WindowKey[K], Out], error) {
+	msg, err := a.r.Read(ctx)
+	if err != nil {
+		return Record[WindowKey[K], Out]{}, err
+	}
+
+	cur, err := a.state.Get(msg.Key)
+	if err != nil {
+		return Record[WindowKey[K], Out]{}, err
+	}
+
+	new := a.agg(msg, cur)
+	a.state.Put(msg.Key, new)
+
+	return Record[WindowKey[K], Out]{
+		Key:   msg.Key,
+		Value: new,
+		Time:  msg.Time,
+	}, nil
+}
+
+func WindowAggregate[K comparable, In any, Out any](reader Reader[WindowKey[K], In], state WindowState[K, Out], agg func(Record[WindowKey[K], In], Out) Out) TableReader[WindowKey[K], Out] {
+	return &windowAggregatorReader[K, In, Out]{
+		r:     reader,
+		agg:   agg,
+		state: state,
+	}
+}
+
+func WindowCount[K comparable, In any](r Reader[WindowKey[K], In], state WindowState[K, uint64]) TableReader[WindowKey[K], uint64] {
+	return WindowAggregate(r, state, func(r Record[WindowKey[K], In], u uint64) uint64 {
+		return u + 1
+	})
+}
+
+func WindowReduce[K comparable, V any](r Reader[WindowKey[K], V], state WindowState[K, V], reducer func(a, b V) V) TableReader[WindowKey[K], V] {
+	return WindowAggregate(r, state, func(r Record[WindowKey[K], V], v V) V {
+		return reducer(v, r.Value)
+	})
 }
