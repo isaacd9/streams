@@ -2,7 +2,6 @@ package streams
 
 import (
 	"context"
-	"fmt"
 	"time"
 )
 
@@ -77,8 +76,7 @@ type windowAggregatorReader[K comparable, In any, Out any] struct {
 }
 
 func (a *windowAggregatorReader[K, In, Out]) get(key WindowKey[K]) (Out, error) {
-	var o Out
-	return o, fmt.Errorf("not implemented")
+	return a.state.Get(key)
 }
 
 func (a *windowAggregatorReader[K, In, Out]) Read(ctx context.Context) (Record[WindowKey[K], Out], error) {

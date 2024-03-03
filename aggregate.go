@@ -4,6 +4,11 @@ import (
 	"context"
 )
 
+type TableReader[K comparable, V any] interface {
+	Reader[K, V]
+	get(key K) (V, error)
+}
+
 type aggregatorReader[K comparable, In any, Out any] struct {
 	r     Reader[K, In]
 	agg   func(Record[K, In], Out) Out

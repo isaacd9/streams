@@ -116,6 +116,7 @@ func TestWindowedWordCount(t *testing.T) {
 			"the lazy lazy dog",
 		}}
 		split := FlatMapValues(UnmarshalString(r), func(s string) []string {
+			time.Sleep(150 * time.Millisecond)
 			return strings.Split(s, " ")
 		})
 		rekey := Map(split, func(r KeyValue[string, string]) KeyValue[string, string] {
@@ -134,8 +135,8 @@ func TestWindowedWordCount(t *testing.T) {
 	windowState := NewMapWindowState[string, uint64]()
 
 	windowed := RealTimeWindow(UnmarshalString(intermediate), TimeWindows{
-		Size:    1 * time.Minute,
-		Advance: 1 * time.Minute,
+		Size:    100 * time.Millisecond,
+		Advance: 100 * time.Millisecond,
 	})
 
 	counted := WindowCount(windowed, windowState)
@@ -217,8 +218,13 @@ func TestJoin(t *testing.T) {
 			Value: strings.ToLower(r.Value),
 		}
 	})
-	joined := JoinTable(rekeyr2, ag, func(r Record[string, string], i int) string {
-		return r.Value + ":" + strconv.Itoa(i)
-	})
+
+	joined := &TableJoinReader[string, string, int, string]{
+		rekeyr2,
+		ag,
+		func(r Record[string, string], i int) string {
+			return r.Value + ":" + strconv.Itoa(i)
+		},
+	}
 	Pipe(MarshalAny(joined), &TestWriter{})
 }
