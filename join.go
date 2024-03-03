@@ -237,7 +237,7 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[
 	j.batch = j.batch[1:]
 
 	commit := func() error {
-		batchNo := j.batchNo
+		batchNo := j.batchNo - 1
 		j.batchRemaining[batchNo]--
 		if j.batchRemaining[batchNo] == 0 {
 			commit := j.batchCommits[batchNo]

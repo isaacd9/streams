@@ -15,12 +15,21 @@ type TestReader struct {
 }
 
 func (m *TestReader) Read(ctx context.Context) (Message, CommitFunc, error) {
+	eofCommit := func() error {
+		return nil
+	}
 	if len(m.st) == 0 {
-		return Message{}, func() error { return nil }, io.EOF
+		return Message{}, eofCommit, io.EOF
 	}
 	r := m.st[0]
 	m.st = m.st[1:]
-	return Message{Value: []byte(r)}, func() error { return nil }, nil
+
+	commit := func() error {
+		log.Printf("committing: %q", r)
+		return nil
+	}
+
+	return Message{Value: []byte(r), Time: time.Now()}, commit, nil
 }
 
 type TestWriter struct{}

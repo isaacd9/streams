@@ -1,6 +1,8 @@
 package streams
 
-import "context"
+import (
+	"context"
+)
 
 type filterReader[K, V any] struct {
 	r  Reader[K, V]
@@ -143,7 +145,9 @@ func (f *flatMapReader[KIn, VIn, KOut, VOut]) Read(ctx context.Context) (Record[
 
 	commit := CommitFunc(func() error {
 		// make it clear we're closed over the batchNo
-		batchNo := f.batchNo
+		// we want to commit the _previous_ batch number as we
+		// incremented it when we set the batch
+		batchNo := f.batchNo - 1
 		f.batchRemaining[batchNo]--
 		if f.batchRemaining[batchNo] == 0 {
 			commit := f.batchCommits[batchNo]
