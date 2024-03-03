@@ -283,8 +283,8 @@ func TestStreamingJoin(t *testing.T) {
 			return r.Value + r2.Value
 		},
 		Cfg: JoinWindows{
-			Before: 100 * time.Millisecond,
-			After:  100 * time.Millisecond,
+			Before: 1 * time.Second,
+			After:  1 * time.Second,
 		},
 	}
 

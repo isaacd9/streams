@@ -73,7 +73,6 @@ func readWindow[K comparable, V any](
 	stream Reader[K, V],
 	state WindowState[K, V],
 	minTime, maxTime time.Time,
-	cfg JoinWindows,
 ) (CommitFunc, error) {
 	var dones []CommitFunc
 
@@ -88,7 +87,6 @@ func readWindow[K comparable, V any](
 
 	for {
 		msg, done, err := stream.Read(ctx)
-		// log.Printf("read msg: %v", msg)
 		if err != nil {
 			if err == io.EOF {
 				return commit, nil
@@ -109,7 +107,6 @@ func readWindow[K comparable, V any](
 			WindowKey[K]{
 				K:     msg.Key,
 				Start: msg.Time,
-				End:   msg.Time.Add(cfg.After),
 			},
 			msg.Value,
 		)
@@ -140,10 +137,26 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) 
 		return commit, err
 	}
 	dones = append(dones, done)
-	right, done, err := j.Left.Read(ctx)
+	j.LeftState.Put(
+		WindowKey[K]{
+			K:     left.Key,
+			Start: left.Time,
+		},
+		left.Value,
+	)
+
+	right, done, err := j.Right.Read(ctx)
 	if err != nil {
 		return commit, err
 	}
+	j.RightState.Put(
+		WindowKey[K]{
+			K:     right.Key,
+			Start: right.Time,
+		},
+		right.Value,
+	)
+
 	dones = append(dones, done)
 
 	minTime := min(left.Time.Add(-j.Cfg.Before), right.Time.Add(-j.Cfg.Before))
@@ -160,7 +173,6 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) 
 			j.LeftState,
 			minTime,
 			maxTime,
-			j.Cfg,
 		)
 
 		if err != nil {
@@ -177,7 +189,6 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) 
 			j.RightState,
 			minTime,
 			maxTime,
-			j.Cfg,
 		)
 
 		if err != nil {
