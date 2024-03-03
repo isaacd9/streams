@@ -168,8 +168,6 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) 
 		return nil
 	})
 
-	// Join
-	// out := j.Joiner(left, right)
 	return nil
 }
 

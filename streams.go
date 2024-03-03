@@ -14,8 +14,10 @@ type Record[K, V any] struct {
 	Time  time.Time
 }
 
+type CommitFunc func() error
+
 type Reader[K, V any] interface {
-	Read(ctx context.Context) (Record[K, V], error)
+	Read(context.Context) (Record[K, V], CommitFunc, error)
 }
 
 type Writer[K, V any] interface {
@@ -25,7 +27,7 @@ type Writer[K, V any] interface {
 func Pipe[K, V any](r Reader[K, V], w Writer[K, V]) (int, error) {
 	var n int
 	for {
-		msg, err := r.Read(context.Background())
+		msg, done, err := r.Read(context.Background())
 		if err != nil {
 			if err == io.EOF {
 				return n, nil
@@ -37,6 +39,7 @@ func Pipe[K, V any](r Reader[K, V], w Writer[K, V]) (int, error) {
 			return n, err
 		}
 
+		done()
 		n += 1
 	}
 }

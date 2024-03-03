@@ -7,15 +7,15 @@ type filterReader[K, V any] struct {
 	fn func(Record[K, V]) bool
 }
 
-func (f *filterReader[K, V]) Read(ctx context.Context) (Record[K, V], error) {
+func (f *filterReader[K, V]) Read(ctx context.Context) (Record[K, V], CommitFunc, error) {
 	for {
-		msg, err := f.r.Read(ctx)
+		msg, done, err := f.r.Read(ctx)
 		if err != nil {
-			return Record[K, V]{}, err
+			return Record[K, V]{}, done, err
 		}
 
 		if f.fn(msg) {
-			return msg, nil
+			return msg, done, nil
 		}
 	}
 }
@@ -50,13 +50,13 @@ type mapReader[KIn, VIn, KOut, VOut any] struct {
 	fn func(Record[KIn, VIn]) Record[KOut, VOut]
 }
 
-func (m *mapReader[KIn, VIn, KOut, VOut]) Read(ctx context.Context) (Record[KOut, VOut], error) {
-	msg, err := m.r.Read(ctx)
+func (m *mapReader[KIn, VIn, KOut, VOut]) Read(ctx context.Context) (Record[KOut, VOut], CommitFunc, error) {
+	msg, done, err := m.r.Read(ctx)
 	if err != nil {
-		return Record[KOut, VOut]{}, err
+		return Record[KOut, VOut]{}, done, err
 	}
 
-	return m.fn(msg), nil
+	return m.fn(msg), done, nil
 }
 
 type KeyValue[K any, V any] struct {
@@ -105,23 +105,38 @@ func MapKeys[KIn, KOut, V any](r Reader[KIn, V], fn func(KIn) KOut) Reader[KOut,
 }
 
 type flatMapReader[KIn, VIn, KOut, VOut any] struct {
-	r     Reader[KIn, VIn]
-	fn    func(Record[KIn, VIn]) []Record[KOut, VOut]
-	batch []Record[KOut, VOut]
+	r              Reader[KIn, VIn]
+	fn             func(Record[KIn, VIn]) []Record[KOut, VOut]
+	batchNo        uint64
+	batch          []Record[KOut, VOut]
+	batchRemaining map[uint64]int
+	batchCommit    func() error
 }
 
-func (f *flatMapReader[KIn, VIn, KOut, VOut]) Read(ctx context.Context) (Record[KOut, VOut], error) {
+func (f *flatMapReader[KIn, VIn, KOut, VOut]) Read(ctx context.Context) (Record[KOut, VOut], CommitFunc, error) {
 	if len(f.batch) == 0 {
-		msg, err := f.r.Read(ctx)
+		msg, done, err := f.r.Read(ctx)
 		if err != nil {
-			return Record[KOut, VOut]{}, err
+			return Record[KOut, VOut]{}, done, err
 		}
+		f.batchCommit = done
 		f.batch = f.fn(msg)
+		f.batchRemaining[f.batchNo] = len(f.batch)
+		f.batchNo++
 	}
 
 	out := f.batch[0]
 	f.batch = f.batch[1:]
-	return out, nil
+
+	commit := CommitFunc(func() error {
+		f.batchRemaining[f.batchNo]--
+		if f.batchRemaining[f.batchNo] == 0 {
+			delete(f.batchRemaining, f.batchNo)
+			return f.batchCommit()
+		}
+		return nil
+	})
+	return out, commit, nil
 }
 
 func FlatMap[KIn, VIn, KOut, VOut any](r Reader[KIn, VIn], fn func(KeyValue[KIn, VIn]) []KeyValue[KOut, VOut]) Reader[KOut, VOut] {
