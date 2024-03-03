@@ -220,11 +220,64 @@ func TestJoin(t *testing.T) {
 	})
 
 	joined := &TableJoinReader[string, string, int, string]{
-		rekeyr2,
-		ag,
-		func(r Record[string, string], i int) string {
+		Reader: rekeyr2,
+		Table:  ag,
+		Joiner: func(r Record[string, string], i int) string {
 			return r.Value + ":" + strconv.Itoa(i)
 		},
 	}
+	Pipe(MarshalAny(joined), &TestWriter{})
+}
+
+func TestStreamingJoin(t *testing.T) {
+	r1 := &TestReader{st: []string{
+		"the quick BROWN",
+		"fox JUMPS over",
+		"the lazy lazy dog",
+	}}
+
+	/*
+		r2 := &TestReader{st: []string{
+			"the", "the", "the",
+			"brown", "brown", "brown",
+		}}
+	*/
+	r2 := &TestReader{st: []string{
+		"the",
+		"brown",
+	}}
+
+	u1 := FlatMap(UnmarshalString(r1), func(r KeyValue[string, string]) []KeyValue[string, int] {
+		var out []KeyValue[string, int]
+		for _, s := range strings.Split(r.Value, " ") {
+			out = append(out, KeyValue[string, int]{
+				Key:   strings.ToLower(s),
+				Value: 1,
+			})
+		}
+
+		return out
+	})
+	u2 := Map(UnmarshalString(r2), func(r KeyValue[string, string]) KeyValue[string, int] {
+		return KeyValue[string, int]{
+			Key:   strings.ToLower(r.Value),
+			Value: 1,
+		}
+	})
+
+	joined := &StreamJoinReader[string, int, int, int]{
+		Left:       u1,
+		Right:      u2,
+		LeftState:  NewMapWindowState[string, int](),
+		RightState: NewMapWindowState[string, int](),
+		Joiner: func(r Record[string, int], r2 Record[string, int]) int {
+			return r.Value + r2.Value
+		},
+		Cfg: JoinWindows{
+			Before: 100 * time.Millisecond,
+			After:  100 * time.Millisecond,
+		},
+	}
+
 	Pipe(MarshalAny(joined), &TestWriter{})
 }

@@ -2,6 +2,7 @@ package streams
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -72,7 +73,11 @@ func readWindow[K comparable, V any](
 ) error {
 	for {
 		msg, err := stream.Read(ctx)
+		// log.Printf("read msg: %v", msg)
 		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
 			return err
 		}
 
@@ -118,7 +123,7 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) 
 	// Read all records from the left and right streams that fall within the
 	// window
 	g.Go(func() error {
-		return readWindow[K, V](
+		return readWindow(
 			ctx,
 			j.Left,
 			j.LeftState,
@@ -129,7 +134,7 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) 
 	})
 
 	g.Go(func() error {
-		return readWindow[K, VJoin](
+		return readWindow(
 			ctx,
 			j.Right,
 			j.RightState,
@@ -179,5 +184,4 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[
 	msg := j.batch[0]
 	j.batch = j.batch[1:]
 	return msg, nil
-
 }
