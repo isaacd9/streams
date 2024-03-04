@@ -6,7 +6,7 @@ import (
 
 type TableReader[K comparable, V any] interface {
 	Reader[K, V]
-	get(key K) (V, error)
+	Get(key K) (V, error)
 }
 
 type aggregatorReader[K comparable, In any, Out any] struct {
@@ -15,7 +15,7 @@ type aggregatorReader[K comparable, In any, Out any] struct {
 	state State[K, Out]
 }
 
-func (a *aggregatorReader[K, In, Out]) get(key K) (Out, error) {
+func (a *aggregatorReader[K, In, Out]) Get(key K) (Out, error) {
 	return a.state.Get(key)
 }
 

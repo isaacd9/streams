@@ -76,7 +76,7 @@ type windowAggregatorReader[K comparable, In any, Out any] struct {
 	state WindowState[K, Out]
 }
 
-func (a *windowAggregatorReader[K, In, Out]) get(key WindowKey[K]) (Out, error) {
+func (a *windowAggregatorReader[K, In, Out]) Get(key WindowKey[K]) (Out, error) {
 	return a.state.Get(key)
 }
 

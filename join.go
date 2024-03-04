@@ -20,7 +20,7 @@ func (j *TableJoinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[K
 		return Record[K, VOut]{}, done, err
 	}
 
-	join, err := j.Table.get(msg.Key)
+	join, err := j.Table.Get(msg.Key)
 	if err != nil {
 		return Record[K, VOut]{}, done, err
 	}
