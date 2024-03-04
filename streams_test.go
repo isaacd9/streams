@@ -14,6 +14,10 @@ type TestReader struct {
 	st []string
 }
 
+func (m *TestReader) Lag(ctx context.Context) (uint64, error) {
+	return 0, nil
+}
+
 func (m *TestReader) Read(ctx context.Context) (Message, CommitFunc, error) {
 	eofCommit := func() error {
 		return nil
@@ -201,20 +205,31 @@ func TestJoin(t *testing.T) {
 		"the lazy lazy dog",
 	}}
 
-	state := NewMapState[string, int]()
-	split := FlatMapValues(UnmarshalString(r), func(s string) []string {
-		return strings.Split(s, " ")
-	})
-	rekey := Map(split, func(r KeyValue[string, string]) KeyValue[string, string] {
-		return KeyValue[string, string]{
-			Key: strings.ToLower(r.Value),
-		}
-	})
-	ag := Aggregate(rekey, state, func(r Record[string, string], s int) int {
-		return len(r.Key)
-	})
+	intermediate := NewNoopPipe()
 
-	Pipe(MarshalAny(ag), &NullWriter{})
+	go func() {
+		state := NewMapState[string, int]()
+		split := FlatMapValues(UnmarshalString(r), func(s string) []string {
+			return strings.Split(s, " ")
+		})
+		rekey := Map(split, func(r KeyValue[string, string]) KeyValue[string, string] {
+			return KeyValue[string, string]{
+				Key: strings.ToLower(r.Value),
+			}
+		})
+		ag := Aggregate(rekey, state, func(r Record[string, string], s int) int {
+			return len(r.Key)
+		})
+
+		Pipe(MarshalAny(ag), intermediate)
+		intermediate.Close()
+	}()
+
+	state := NewMapState[string, string]()
+	table, err := PipeTable(UnmarshalString(intermediate), state)
+	if err != nil {
+		t.Errorf("error: %v", err)
+	}
 
 	r2 := &TestReader{st: []string{
 		"the", "the", "the",
@@ -228,13 +243,14 @@ func TestJoin(t *testing.T) {
 		}
 	})
 
-	joined := TableJoinReader[string, string, int, string](
+	joined := TableJoinReader(
 		rekeyr2,
-		ag,
-		func(r Record[string, string], i int) string {
-			return r.Value + ":" + strconv.Itoa(i)
+		table,
+		func(r Record[string, string], i string) string {
+			return r.Value + ":" + i
 		},
 	)
+	Pipe(MarshalAny(table), &NullWriter{})
 	Pipe(MarshalAny(joined), &TestWriter{})
 }
 

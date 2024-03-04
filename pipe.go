@@ -37,6 +37,10 @@ func (n *NoopPipe) Read(ctx context.Context) (Message, CommitFunc, error) {
 	}
 }
 
+func (n *NoopPipe) Lag(ctx context.Context) (uint64, error) {
+	return 0, nil
+}
+
 func (n *NoopPipe) Write(ctx context.Context, msg Message) error {
 	select {
 	case n.ch <- msg:
