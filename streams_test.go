@@ -228,13 +228,13 @@ func TestJoin(t *testing.T) {
 		}
 	})
 
-	joined := &TableJoinReader[string, string, int, string]{
-		Reader: rekeyr2,
-		Table:  ag,
-		Joiner: func(r Record[string, string], i int) string {
+	joined := TableJoinReader[string, string, int, string](
+		rekeyr2,
+		ag,
+		func(r Record[string, string], i int) string {
 			return r.Value + ":" + strconv.Itoa(i)
 		},
-	}
+	)
 	Pipe(MarshalAny(joined), &TestWriter{})
 }
 
@@ -274,19 +274,19 @@ func TestStreamingJoin(t *testing.T) {
 		}
 	})
 
-	joined := &StreamJoinReader[string, int, int, int]{
-		Left:       u1,
-		Right:      u2,
-		LeftState:  NewMapWindowState[string, int](),
-		RightState: NewMapWindowState[string, int](),
-		Joiner: func(r Record[string, int], r2 Record[string, int]) int {
+	joined := StreamJoinReader[string, int, int, int](
+		u1,
+		u2,
+		NewMapWindowState[string, int](),
+		NewMapWindowState[string, int](),
+		func(r Record[string, int], r2 Record[string, int]) int {
 			return r.Value + r2.Value
 		},
-		Cfg: JoinWindows{
+		JoinWindows{
 			Before: 1 * time.Second,
 			After:  1 * time.Second,
 		},
-	}
+	)
 
 	Pipe(MarshalAny(joined), &TestWriter{})
 }

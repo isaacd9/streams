@@ -174,6 +174,8 @@ func FlatMap[KIn, VIn, KOut, VOut any](r Reader[KIn, VIn], fn func(KeyValue[KIn,
 			}
 			return batch
 		},
+		batchRemaining: make(map[uint64]int),
+		batchCommits:   make(map[uint64]CommitFunc),
 	}
 }
 
@@ -192,6 +194,8 @@ func FlatMapValues[K, VIn, VOut any](r Reader[K, VIn], fn func(VIn) []VOut) Read
 			}
 			return batch
 		},
+		batchRemaining: make(map[uint64]int),
+		batchCommits:   make(map[uint64]CommitFunc),
 	}
 }
 
@@ -210,5 +214,7 @@ func FlatMapKeys[KIn, KOut, V any](r Reader[KIn, V], fn func(KIn) []KOut) Reader
 			}
 			return batch
 		},
+		batchRemaining: make(map[uint64]int),
+		batchCommits:   make(map[uint64]CommitFunc),
 	}
 }

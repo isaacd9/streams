@@ -8,13 +8,25 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type TableJoinReader[K comparable, V, VJoin, VOut any] struct {
+type tableJoinReader[K comparable, V, VJoin, VOut any] struct {
 	Reader Reader[K, V]
 	Table  TableReader[K, VJoin]
 	Joiner func(Record[K, V], VJoin) VOut
 }
 
-func (j *TableJoinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[K, VOut], CommitFunc, error) {
+func TableJoinReader[K comparable, V, VJoin, VOut any](
+	reader Reader[K, V],
+	table TableReader[K, VJoin],
+	joiner func(Record[K, V], VJoin) VOut,
+) Reader[K, VOut] {
+	return &tableJoinReader[K, V, VJoin, VOut]{
+		Reader: reader,
+		Table:  table,
+		Joiner: joiner,
+	}
+}
+
+func (j *tableJoinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[K, VOut], CommitFunc, error) {
 	msg, done, err := j.Reader.Read(ctx)
 	if err != nil {
 		return Record[K, VOut]{}, done, err
@@ -40,7 +52,7 @@ type JoinWindows struct {
 }
 
 // This is buggy and probably doesn't work
-type StreamJoinReader[K comparable, V, VJoin, VOut any] struct {
+type streamJoinReader[K comparable, V, VJoin, VOut any] struct {
 	Left       Reader[K, V]
 	Right      Reader[K, VJoin]
 	LeftState  WindowState[K, V]
@@ -52,6 +64,26 @@ type StreamJoinReader[K comparable, V, VJoin, VOut any] struct {
 	batch          []Record[K, VOut]
 	batchRemaining map[int]int
 	batchCommits   map[int]CommitFunc
+}
+
+func StreamJoinReader[K comparable, V, VJoin, VOut any](
+	left Reader[K, V],
+	right Reader[K, VJoin],
+	leftState WindowState[K, V],
+	rightState WindowState[K, VJoin],
+	joiner func(Record[K, V], Record[K, VJoin]) VOut,
+	cfg JoinWindows,
+) Reader[K, VOut] {
+	return &streamJoinReader[K, V, VJoin, VOut]{
+		Left:           left,
+		Right:          right,
+		LeftState:      leftState,
+		RightState:     rightState,
+		Joiner:         joiner,
+		Cfg:            cfg,
+		batchRemaining: make(map[int]int),
+		batchCommits:   make(map[int]CommitFunc),
+	}
 }
 
 func min(a, b time.Time) time.Time {
@@ -119,7 +151,7 @@ func readWindow[K comparable, V any](
 	}
 }
 
-func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) (CommitFunc, error) {
+func (j *streamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) (CommitFunc, error) {
 	var dones []CommitFunc
 
 	commit := func() error {
@@ -225,21 +257,14 @@ func (j *StreamJoinReader[K, V, VJoin, VOut]) prepareBatch(ctx context.Context) 
 	return commit, nil
 }
 
-func (j *StreamJoinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[K, VOut], CommitFunc, error) {
+func (j *streamJoinReader[K, V, VJoin, VOut]) Read(ctx context.Context) (Record[K, VOut], CommitFunc, error) {
 	if len(j.batch) == 0 {
 		done, err := j.prepareBatch(ctx)
 		if err != nil {
 			return Record[K, VOut]{}, done, err
 		}
 
-		if j.batchCommits == nil {
-			j.batchCommits = make(map[int]CommitFunc)
-		}
 		j.batchCommits[j.batchNo] = done
-
-		if j.batchRemaining == nil {
-			j.batchRemaining = make(map[int]int)
-		}
 		j.batchRemaining[j.batchNo] = len(j.batch)
 		j.batchNo++
 	}
