@@ -27,7 +27,7 @@ func (w *windowReader[K, V]) Read(ctx context.Context) (Record[WindowKey[K], V],
 	}
 
 	msg, err := w.windower(ctx, r)
-	return msg, done, nil
+	return msg, done, err
 }
 
 type TimeWindows struct {
