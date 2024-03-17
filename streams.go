@@ -87,6 +87,20 @@ func PipeTable[K comparable, V any](r LaggedReader[K, V], state State[K, V]) (Ta
 	return rdr, nil
 }
 
+func Consume[K comparable, V any](r TableReader[K, V]) error {
+	for {
+		_, done, err := r.Read(context.Background())
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+
+		done()
+	}
+}
+
 func Pipe[K, V any](r Reader[K, V], w Writer[K, V]) (int, error) {
 	var n int
 	for {

@@ -4,6 +4,48 @@ import (
 	"context"
 )
 
+type merge[K, V any] struct {
+	Record[K, V]
+	Commit CommitFunc
+	Error  error
+}
+
+type mergedReader[K, V any] struct {
+	readers []Reader[K, V]
+	ch      chan merge[K, V]
+}
+
+func (m *mergedReader[K, V]) Read(ctx context.Context) (Record[K, V], CommitFunc, error) {
+	merge := <-m.ch
+	return merge.Record, merge.Commit, merge.Error
+}
+
+func (m *mergedReader[K, V]) merge() {
+	for _, r := range m.readers {
+		go func(r Reader[K, V]) {
+			for {
+				msg, done, err := r.Read(context.TODO())
+				if err != nil {
+					m.ch <- merge[K, V]{Error: err}
+					return
+				}
+				m.ch <- merge[K, V]{Record: msg, Commit: done}
+			}
+		}(r)
+	}
+}
+
+func Merge[K, V any](readers ...Reader[K, V]) Reader[K, V] {
+	rdr := &mergedReader[K, V]{
+		readers: readers,
+		ch:      make(chan merge[K, V]),
+	}
+
+	rdr.merge()
+
+	return rdr
+}
+
 type filterReader[K, V any] struct {
 	r  Reader[K, V]
 	fn func(Record[K, V]) bool

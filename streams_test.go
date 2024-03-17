@@ -250,7 +250,7 @@ func TestJoin(t *testing.T) {
 			return r.Value + ":" + i
 		},
 	)
-	Pipe(MarshalAny(table), &NullWriter{})
+	Consume(table)
 	Pipe(MarshalAny(joined), &TestWriter{})
 }
 
@@ -290,7 +290,7 @@ func TestStreamingJoin(t *testing.T) {
 		}
 	})
 
-	joined := StreamJoinReader[string, int, int, int](
+	joined := StreamJoinReader(
 		u1,
 		u2,
 		NewMapWindowState[string, int](),
@@ -305,4 +305,34 @@ func TestStreamingJoin(t *testing.T) {
 	)
 
 	Pipe(MarshalAny(joined), &TestWriter{})
+}
+
+var splitValues = func(r KeyValue[string, string]) []KeyValue[string, string] {
+	var out []KeyValue[string, string]
+	for _, s := range strings.Split(r.Value, " ") {
+		out = append(out, KeyValue[string, string]{
+			Key:   r.Key,
+			Value: s,
+		})
+	}
+
+	return out
+}
+
+func TestMerge(t *testing.T) {
+	r1 := &TestReader{st: []string{
+		"the quick brown",
+		"fox jumps over",
+	}}
+
+	r2 := &TestReader{st: []string{
+		"the lazy lazy dog",
+	}}
+
+	u1 := FlatMap(UnmarshalString(r1), splitValues)
+	u2 := FlatMap(UnmarshalString(r2), splitValues)
+
+	merged := Merge(u1, u2)
+
+	Pipe(MarshalAny(merged), &TestWriter{})
 }
