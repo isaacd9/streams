@@ -307,7 +307,7 @@ func TestStreamingJoin(t *testing.T) {
 	Pipe(MarshalAny(joined), &TestWriter{})
 }
 
-var splitValues = func(r KeyValue[string, string]) []KeyValue[string, string] {
+func splitValues(r KeyValue[string, string]) []KeyValue[string, string] {
 	var out []KeyValue[string, string]
 	for _, s := range strings.Split(r.Value, " ") {
 		out = append(out, KeyValue[string, string]{
@@ -317,6 +317,10 @@ var splitValues = func(r KeyValue[string, string]) []KeyValue[string, string] {
 	}
 
 	return out
+}
+
+func split(r LaggedReader[[]byte, []byte]) Reader[string, string] {
+	return FlatMap(UnmarshalString(r), splitValues)
 }
 
 func TestMerge(t *testing.T) {
@@ -329,8 +333,8 @@ func TestMerge(t *testing.T) {
 		"the lazy lazy dog",
 	}}
 
-	u1 := FlatMap(UnmarshalString(r1), splitValues)
-	u2 := FlatMap(UnmarshalString(r2), splitValues)
+	u1 := split(r1)
+	u2 := split(r2)
 
 	merged := Merge(u1, u2)
 

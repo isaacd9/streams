@@ -44,6 +44,7 @@ func (r *tableReader[K, V]) Read(ctx context.Context) (Record[K, V], CommitFunc,
 	return msg, done, nil
 }
 
+// LaggedReader is a reader that can report its lag against the source.
 type LaggedReader[K, V any] interface {
 	Reader[K, V]
 	Lag(context.Context) (uint64, error)
